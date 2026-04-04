@@ -1,0 +1,57 @@
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  width: 380px;
+  height: 600px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
+    Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", Arial,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px;
+  border-bottom: 1px solid #eee;
+}
+
+.settings {
+  display: flex;
+  gap: 6px;
+}
+.settings input {
+  width: 220px;
+  padding: 6px 8px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+}
+.settings button {
+  padding: 6px 10px;
+  background: #ff5a36;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.main {
+  flex: 1;
+}
+.main iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+.error {
+  padding: 12px;
+  color: #b00020;
+}
+

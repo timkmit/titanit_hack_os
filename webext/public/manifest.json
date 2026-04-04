@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "OpenClaw Companion",
+  "version": "0.1.0",
+  "description": "Popup chat for OpenClaw Control UI with quick settings.",
+  "action": {
+    "default_title": "OpenClaw",
+    "default_popup": "popup/index.html"
+  },
+  "permissions": ["storage"],
+  "host_permissions": ["http://localhost:18789/*", "http://127.0.0.1:18789/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "icons": {
+    "16": "icons/16.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_ui": {
+    "page": "popup/index.html",
+    "open_in_tab": true
+  }
+}
+
