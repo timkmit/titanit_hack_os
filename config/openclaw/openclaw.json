@@ -4,6 +4,14 @@
       "mode": "off"
     }
   },
+  "session": {
+    "dmScope": "per-channel-peer",
+    "maintenance": {
+      "mode": "warn",
+      "pruneAfter": "30d",
+      "maxEntries": 500
+    }
+  },
   "gateway": {
     "mode": "local",
     "controlUi": {
@@ -14,17 +22,50 @@
       "dangerouslyDisableDeviceAuth": true
     }
   },
+  "browser": {
+    "enabled": true,
+    "defaultProfile": "openclaw",
+    "headless": true,
+    "noSandbox": true,
+    "color": "#FF5A36",
+    "ssrfPolicy": {
+      "dangerouslyAllowPrivateNetwork": false
+    },
+    "profiles": {
+      "openclaw": {
+        "cdpPort": 18800,
+        "color": "#FF5A36"
+      }
+    }
+  },
+  "tools": {
+    "profile": "minimal",
+    "allow": [
+      "group:ui",
+      "group:web"
+    ],
+    "web": {
+      "fetch": {
+        "enabled": true,
+        "maxCharsCap": 50000
+      },
+      "search": {
+        "enabled": true,
+        "maxResults": 5
+      }
+    }
+  },
   "agents": {
     "defaults": {
       "workspace": "~/.openclaw/workspace",
       "timeoutSeconds": 900,
       "model": {
-        "primary": "ollama/llama3.2:3b"
+        "primary": "ollama/qwen2.5:7b-instruct"
       },
       "models": {
-        "ollama/llama3.2:3b": {
+        "ollama/qwen2.5:7b-instruct": {
           "params": {
-            "num_ctx": 32768
+            "num_ctx": 16384
           }
         }
       }
@@ -39,10 +80,12 @@
         "api": "ollama",
         "models": [
           {
-            "id": "llama3.2:3b",
-            "name": "Llama 3.2 3B",
+            "id": "qwen2.5:7b-instruct",
+            "name": "Qwen2.5 7B Instruct",
             "reasoning": false,
-            "input": ["text"],
+            "input": [
+              "text"
+            ],
             "cost": {
               "input": 0,
               "output": 0,
@@ -50,10 +93,21 @@
               "cacheWrite": 0
             },
             "contextWindow": 32768,
-            "maxTokens": 16384
+            "maxTokens": 4096
           }
         ]
       }
     }
+  },
+  "plugins": {
+    "entries": {
+      "browser": {
+        "enabled": true
+      }
+    }
+  },
+  "meta": {
+    "lastTouchedVersion": "2026.4.2",
+    "lastTouchedAt": "2026-04-04T13:26:13.927Z"
   }
 }

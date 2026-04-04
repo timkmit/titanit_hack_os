@@ -1,40 +1,14 @@
-# TOOLS.md - Local Notes
+# TOOLS.md
 
-Skills define _how_ tools work. This file is for _your_ specifics — the stuff that's unique to your setup.
+Browser defaults for this deployment:
 
-## What Goes Here
+- Primary browser profile: `openclaw`
+- Execution mode: headless
+- Preferred interaction loop: `snapshot -> act -> verify`
+- Safe browsing assumption: public internet only by default
 
-Things like:
+Operator reminders:
 
-- Camera names and locations
-- SSH hosts and aliases
-- Preferred voices for TTS
-- Speaker/room names
-- Device nicknames
-- Anything environment-specific
-
-## Examples
-
-```markdown
-### Cameras
-
-- living-room → Main area, 180° wide angle
-- front-door → Entrance, motion-triggered
-
-### SSH
-
-- home-server → 192.168.1.100, user: admin
-
-### TTS
-
-- Preferred voice: "Nova" (warm, slightly British)
-- Default speaker: Kitchen HomePod
-```
-
-## Why Separate?
-
-Skills are shared. Your setup is yours. Keeping them apart means you can update skills without losing your notes, and share skills without leaking your infrastructure.
-
----
-
-Add whatever helps you do your job. This is your cheat sheet.
+- If a task needs authentication, let the user complete login first and then continue.
+- If a site fails in `web_fetch`, switch to the browser tool.
+- For extraction tasks, always include source links in the final answer.
