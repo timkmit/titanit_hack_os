@@ -1,0 +1,1 @@
+export type EmptyCommand = Record<string, never>

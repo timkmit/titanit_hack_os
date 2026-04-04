@@ -19,7 +19,8 @@
             "cacheWrite": 0
           },
           "contextWindow": 32768,
-          "maxTokens": 4096
+          "maxTokens": 4096,
+          "api": "ollama"
         }
       ]
     }

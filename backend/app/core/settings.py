@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     openclaw_base_url: str = "http://openclaw-gateway:18789"
     ollama_base_url: str = "http://ollama:11434"
     openclaw_public_url: str = "http://localhost:18789"
-    frontend_origin: str = "http://localhost:3000"
+    frontend_origin: str = "http://localhost:3000,http://127.0.0.1:3000"
     api_host: str = "0.0.0.0"
     api_port: int = 8000
 
