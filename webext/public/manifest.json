@@ -5,10 +5,10 @@
   "description": "Popup chat for OpenClaw Control UI with quick settings.",
   "action": {
     "default_title": "OpenClaw",
-    "default_popup": "popup/index.html"
+    "default_popup": "src/popup/index.html"
   },
   "permissions": ["storage"],
-  "host_permissions": ["http://localhost:18789/*", "http://127.0.0.1:18789/*"],
+  "host_permissions": ["http://*/*", "https://*/*"],
   "background": {
     "service_worker": "background.js",
     "type": "module"
@@ -26,7 +26,7 @@
     }
   ],
   "options_ui": {
-    "page": "popup/index.html",
+    "page": "src/popup/index.html",
     "open_in_tab": true
   }
 }

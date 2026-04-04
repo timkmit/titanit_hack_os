@@ -15,7 +15,7 @@
   btn.style.cursor = "pointer"
   btn.style.boxShadow = "0 2px 8px rgba(0,0,0,0.2)"
   btn.addEventListener("click", () => {
-    const url = chrome.runtime.getURL("popup/index.html")
+    const url = chrome.runtime.getURL("src/popup/index.html")
     window.open(url, "_blank", "noopener,noreferrer,width=420,height=700")
   })
   document.documentElement.appendChild(btn)
