@@ -9,18 +9,18 @@ import {
 const DEFAULT_URL = import.meta.env.VITE_OPENCLAW_URL || "http://localhost:18789"
 
 function normalizeUrl(raw: string): string {
-  let s = raw.trim()
-  if (!s) return s
-  if (!/^https?:\/\//i.test(s)) {
-    s = `http://${s}`
+  let value = raw.trim()
+  if (!value) return value
+  if (!/^https?:\/\//i.test(value)) {
+    value = `http://${value}`
   }
-  return s
+  return value
 }
 
-function isValidHttpUrl(s: string): boolean {
+function isValidHttpUrl(value: string): boolean {
   try {
-    const u = new URL(s)
-    return u.protocol === "http:" || u.protocol === "https:"
+    const url = new URL(value)
+    return url.protocol === "http:" || url.protocol === "https:"
   } catch {
     return false
   }
@@ -32,8 +32,8 @@ function gatewayHealthUrl(base: string): string {
 
 async function checkGatewayReachable(base: string): Promise<boolean> {
   try {
-    const res = await fetch(gatewayHealthUrl(base), { method: "GET", cache: "no-store" })
-    return res.ok
+    const response = await fetch(gatewayHealthUrl(base), { method: "GET", cache: "no-store" })
+    return response.ok
   } catch {
     return false
   }
@@ -51,12 +51,15 @@ export function App() {
   const load = useCallback(async () => {
     const data = await chrome.storage.sync.get([STORAGE_URL, STORAGE_SETUP, STORAGE_GATEWAY_TOKEN])
     const storedUrl = typeof data[STORAGE_URL] === "string" ? data[STORAGE_URL] : ""
-    const storedToken = typeof data[STORAGE_GATEWAY_TOKEN] === "string" ? data[STORAGE_GATEWAY_TOKEN] : ""
+    const storedToken =
+      typeof data[STORAGE_GATEWAY_TOKEN] === "string" ? data[STORAGE_GATEWAY_TOKEN] : ""
+
     let setupDone = data[STORAGE_SETUP] === true
     if (data[STORAGE_SETUP] === undefined && storedUrl.length > 0 && storedToken.length > 0) {
       setupDone = true
       await chrome.storage.sync.set({ [STORAGE_SETUP]: true })
     }
+
     setUrl(storedUrl)
     setTempUrl(storedUrl || DEFAULT_URL)
     setTempToken(storedToken)
@@ -92,14 +95,17 @@ export function App() {
   async function handleConnect() {
     const normalized = normalizeUrl(tempUrl)
     const token = tempToken.trim()
+
     if (!normalized || !isValidHttpUrl(normalized)) {
-      setError("Укажите корректный адрес, например http://localhost:18789")
+      setError("Enter a valid gateway URL, for example http://localhost:18789.")
       return
     }
+
     if (!token) {
-      setError("Нужен токен шлюза (OPENCLAW_GATEWAY_TOKEN из .env / docker-compose)")
+      setError("Enter the gateway token from OPENCLAW_GATEWAY_TOKEN.")
       return
     }
+
     setError("")
     await chrome.storage.sync.set({
       [STORAGE_URL]: normalized,
@@ -114,9 +120,9 @@ export function App() {
   function openSettings() {
     setFromMain(true)
     setTempUrl(url)
-    void chrome.storage.sync.get(STORAGE_GATEWAY_TOKEN).then((d) => {
-      const t = d[STORAGE_GATEWAY_TOKEN]
-      setTempToken(typeof t === "string" ? t : "")
+    void chrome.storage.sync.get(STORAGE_GATEWAY_TOKEN).then((data) => {
+      const token = data[STORAGE_GATEWAY_TOKEN]
+      setTempToken(typeof token === "string" ? token : "")
     })
     setError("")
     setPhase("setup")
@@ -132,7 +138,7 @@ export function App() {
     return (
       <div className="shell shell--center">
         <div className="spinner" aria-hidden />
-        <p className="muted">Загрузка…</p>
+        <p className="muted">Loading...</p>
       </div>
     )
   }
@@ -146,21 +152,21 @@ export function App() {
             <div>
               <h1 className="setup-title">OpenClaw</h1>
               <p className="setup-subtitle">
-                URL шлюза и секретный токен — расширение подключается по WebSocket напрямую.
+                The extension connects directly to your OpenClaw gateway over WebSocket.
               </p>
             </div>
           </div>
 
           <label className="field-label" htmlFor="oc-url">
-            URL сервера
+            Gateway URL
           </label>
           <input
             id="oc-url"
             className="field-input"
             type="text"
             value={tempUrl}
-            onChange={(e) => {
-              setTempUrl(e.target.value)
+            onChange={(event) => {
+              setTempUrl(event.target.value)
               setError("")
             }}
             placeholder={DEFAULT_URL}
@@ -170,15 +176,15 @@ export function App() {
           />
 
           <label className="field-label" htmlFor="oc-token" style={{ marginTop: 14 }}>
-            Токен шлюза
+            Gateway token
           </label>
           <input
             id="oc-token"
             className="field-input"
             type="password"
             value={tempToken}
-            onChange={(e) => {
-              setTempToken(e.target.value)
+            onChange={(event) => {
+              setTempToken(event.target.value)
               setError("")
             }}
             placeholder="OPENCLAW_GATEWAY_TOKEN"
@@ -188,18 +194,17 @@ export function App() {
 
           {error ? <p className="field-error">{error}</p> : null}
           <p className="field-hint">
-            Тот же токен, что задан в <code className="inline-code">OPENCLAW_GATEWAY_TOKEN</code> для контейнера
-            openclaw-gateway.
+            Use the same value that you put into <code className="inline-code">OPENCLAW_GATEWAY_TOKEN</code>.
           </p>
 
           <div className="setup-actions">
             {fromMain ? (
               <button type="button" className="btn btn--ghost" onClick={cancelSettings}>
-                Назад
+                Back
               </button>
             ) : null}
             <button type="button" className="btn btn--primary" onClick={() => void handleConnect()}>
-              {fromMain ? "Сохранить" : "Подключиться"}
+              {fromMain ? "Save" : "Connect"}
             </button>
           </div>
         </div>
@@ -216,8 +221,8 @@ export function App() {
             type="button"
             className="icon-btn"
             onClick={openControlUiTab}
-            title="Полный Control UI во вкладке"
-            aria-label="Открыть полный Control UI"
+            title="Open full Control UI"
+            aria-label="Open full Control UI"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3" />
@@ -227,8 +232,8 @@ export function App() {
             type="button"
             className="icon-btn"
             onClick={openSettings}
-            title="Изменить адрес и токен"
-            aria-label="Настройки"
+            title="Open settings"
+            aria-label="Open settings"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
               <circle cx="12" cy="12" r="3" />
@@ -244,15 +249,15 @@ export function App() {
             <div className={`hub-status hub-status--${health} hub-status--compact`}>
               <span className="hub-status-dot" aria-hidden />
               {health === "checking" ? (
-                <span>HTTP…</span>
+                <span>Checking HTTP...</span>
               ) : health === "ok" ? (
-                <span>Шлюз на месте</span>
+                <span>Gateway online</span>
               ) : (
-                <span>HTTP недоступен</span>
+                <span>HTTP unavailable</span>
               )}
             </div>
             <button type="button" className="btn-inline btn-inline--dim" onClick={recheckHealth}>
-              Проверить
+              Retry
             </button>
           </div>
           <ChatWorkspace gatewayHttpBase={url} />
@@ -260,9 +265,9 @@ export function App() {
       ) : (
         <main className="main-hub">
           <div className="frame-fallback">
-            <p>Сохранённый адрес недоступен.</p>
+            <p>The saved gateway URL is not reachable.</p>
             <button type="button" className="btn btn--primary" onClick={openSettings}>
-              Задать адрес
+              Open settings
             </button>
           </div>
         </main>

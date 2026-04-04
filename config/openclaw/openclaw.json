@@ -66,7 +66,7 @@
       "models": {
         "ollama/qwen2.5:7b-instruct": {
           "params": {
-            "num_ctx": 16384
+            "num_ctx": 8192
           }
         }
       }
@@ -76,7 +76,7 @@
     "mode": "merge",
     "providers": {
       "ollama": {
-        "baseUrl": "http://ollama:11434",
+        "baseUrl": "http://host.docker.internal:11434",
         "apiKey": "ollama-local",
         "api": "ollama",
         "models": [

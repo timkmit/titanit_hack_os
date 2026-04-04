@@ -1,7 +1,7 @@
 {
   "providers": {
     "ollama": {
-      "baseUrl": "http://ollama:11434",
+      "baseUrl": "http://host.docker.internal:11434",
       "apiKey": "OLLAMA_API_KEY",
       "api": "ollama",
       "models": [

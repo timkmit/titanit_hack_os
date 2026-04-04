@@ -14,7 +14,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   }
 })
 
-chrome.runtime.onMessage.addListener((msg, _sender, _sendResponse) => {
+chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === "OPEN_POPUP") {
     const url = chrome.runtime.getURL("src/popup/index.html")
     chrome.windows.create({ url, type: "popup", width: 420, height: 700 })
@@ -26,9 +26,9 @@ let sessionLock: Promise<OpenClawWsSession> | null = null
 const ports = new Set<chrome.runtime.Port>()
 
 function broadcast(msg: object) {
-  for (const p of ports) {
+  for (const port of ports) {
     try {
-      p.postMessage(msg)
+      port.postMessage(msg)
     } catch {}
   }
 }
@@ -44,15 +44,16 @@ async function readAuth(): Promise<{ httpBase: string; gatewayToken: string; dev
     typeof data[STORAGE_GATEWAY_TOKEN] === "string" ? data[STORAGE_GATEWAY_TOKEN] : ""
   const deviceToken =
     typeof data[STORAGE_DEVICE_TOKEN] === "string" ? data[STORAGE_DEVICE_TOKEN] : undefined
+
   if (!httpBase || !gatewayToken) {
-    throw new Error("Укажите URL и токен шлюза в настройках расширения")
+    throw new Error("Set the gateway URL and token in the extension settings.")
   }
+
   return { httpBase, gatewayToken, deviceToken }
 }
 
 async function getOrCreateSession(): Promise<OpenClawWsSession> {
   if (session?.connected) return session
-
   if (sessionLock) return sessionLock
 
   sessionLock = (async () => {
@@ -61,17 +62,18 @@ async function getOrCreateSession(): Promise<OpenClawWsSession> {
         session.close()
         session = null
       }
+
       const { httpBase, gatewayToken, deviceToken } = await readAuth()
       const wsUrl = httpBaseToWsUrl(httpBase)
-      const s = new OpenClawWsSession(wsUrl, (ev) => {
+      const nextSession = new OpenClawWsSession(wsUrl, (ev) => {
         broadcast({ type: "gwEvent", event: ev.event, payload: ev.payload })
       })
-      const { deviceToken: nextDevice } = await s.connect({ gatewayToken, deviceToken })
+      const { deviceToken: nextDevice } = await nextSession.connect({ gatewayToken, deviceToken })
       if (nextDevice) {
         await chrome.storage.sync.set({ [STORAGE_DEVICE_TOKEN]: nextDevice })
       }
-      session = s
-      return s
+      session = nextSession
+      return nextSession
     } finally {
       sessionLock = null
     }
@@ -93,11 +95,11 @@ chrome.runtime.onConnect.addListener((port) => {
     try {
       await getOrCreateSession()
       port.postMessage({ type: "conn", status: "ready" })
-    } catch (e) {
+    } catch (error) {
       port.postMessage({
         type: "conn",
         status: "error",
-        detail: e instanceof Error ? e.message : String(e)
+        detail: error instanceof Error ? error.message : String(error)
       })
     }
   })()
@@ -106,30 +108,31 @@ chrome.runtime.onConnect.addListener((port) => {
     void (async () => {
       if (msg?.type === "rpc" && typeof msg.rid === "string" && typeof msg.method === "string") {
         try {
-          const s = await getOrCreateSession()
-          const result = await s.request(
+          const activeSession = await getOrCreateSession()
+          const result = await activeSession.request(
             msg.method,
             (msg.params as Record<string, unknown>) ?? {}
           )
           port.postMessage({ type: "rpcRes", rid: msg.rid, ok: true, result })
-        } catch (e) {
-          const message = e instanceof Error ? e.message : String(e)
-          if (/соедин|connection|closed|websocket|шлюз/i.test(message)) {
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          if (/connect|connection|closed|websocket|gateway/i.test(message)) {
             invalidateSession()
           }
           port.postMessage({ type: "rpcRes", rid: msg.rid, ok: false, error: message })
         }
       }
+
       if (msg?.type === "resetSession") {
         invalidateSession()
         try {
           await getOrCreateSession()
           port.postMessage({ type: "conn", status: "ready" })
-        } catch (e) {
+        } catch (error) {
           port.postMessage({
             type: "conn",
             status: "error",
-            detail: e instanceof Error ? e.message : String(e)
+            detail: error instanceof Error ? error.message : String(error)
           })
         }
       }

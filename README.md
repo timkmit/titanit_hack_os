@@ -1,66 +1,72 @@
 # Titanit Browser Agent
 
-Dockerized OpenClaw deployment for a universal browser-control assistant.
+OpenClaw-based browser agent with a local host Ollama model and a Chrome extension popup.
 
-## What This Project Does
+## Stack
 
-- Accepts natural-language browser tasks through OpenClaw Control UI.
-- Uses a local LLM via Ollama to plan and execute browser actions.
-- Runs a dedicated, isolated browser profile for agent automation.
-- Exposes an operator dashboard and audit API for session logs and exports.
+- `openclaw-gateway`: agent runtime, Control UI, browser tools
+- `api`: FastAPI health and audit endpoints
+- `frontend`: dashboard
+- `webext`: Chrome extension popup chat
+- `ollama`: runs on the host machine, not in Docker
 
-## Architecture
+## Required Host Model
 
-- `openclaw-gateway`: agent runtime and Control UI.
-- `ollama`: local model provider.
-- `api`: FastAPI service for health, runtime info, session audit, and exports.
-- `frontend`: React dashboard with status, examples, and audit browser.
+Install Ollama on the host and pull this model:
+
+```powershell
+ollama pull qwen2.5:7b-instruct
+```
+
+This is the model the project is configured to use by default.
 
 ## Quick Start
 
 1. Copy `.env.example` to `.env`.
-2. Replace `OPENCLAW_GATEWAY_TOKEN` with a real secret.
-3. Start the stack:
+2. Set `OPENCLAW_GATEWAY_TOKEN` to a real secret.
+3. Make sure Ollama is running on the host at `http://localhost:11434`.
+4. Start the stack:
 
 ```powershell
 docker compose up -d --build
 ```
 
-4. Open:
+5. Open:
 
 - Dashboard: `http://localhost:3000`
 - Control UI: `http://localhost:18789`
 - API docs: `http://localhost:8000/docs`
 
-## GPU / Host Ollama Modes
+## Chrome Extension
 
-- All-in-one local mode:
-
-```powershell
-docker compose -f docker-compose.yml -f compose.override.gpu.yml up -d --build
-```
-
-- Host Ollama mode:
+Build the extension:
 
 ```powershell
-docker compose -f docker-compose.host.yml -f compose.override.gpu.yml up -d --build
+cd webext
+npm i
+npm run build
 ```
 
-## First Operator Flow
+Load it in Chrome:
 
-1. Open the Control UI.
-2. Connect using:
-   - WebSocket URL: `ws://127.0.0.1:18789`
-   - Gateway token: value of `OPENCLAW_GATEWAY_TOKEN`
-3. Ask the agent to do browser work, for example:
-   - `Open habr.com, find the latest article about MCP, and give me a short summary with the link.`
-   - `Go to wikipedia.org, search for Alan Turing, open the article, and extract the first 5 facts.`
-   - `Open github.com, search for OpenClaw, and tell me what repository is official.`
+1. Open `chrome://extensions`
+2. Enable Developer mode
+3. Click `Load unpacked`
+4. Select `webext/dist`
 
-## Audit and Logs
+In the extension popup, enter:
 
-- Session list: `GET /api/audit/sessions`
-- Session transcript: `GET /api/audit/sessions/{session_id}`
-- Create export archive: `POST /api/audit/exports`
+- Gateway URL: `http://localhost:18789`
+- Gateway token: the value of `OPENCLAW_GATEWAY_TOKEN`
 
-Exports include gateway config, workspace instructions, and current session transcripts.
+## Demo Prompt
+
+```text
+Open example.com in the browser, wait for the page to load, then tell me the page title and current URL.
+```
+
+## Audit API
+
+- `GET /api/audit/sessions`
+- `GET /api/audit/sessions/{session_id}`
+- `POST /api/audit/exports`

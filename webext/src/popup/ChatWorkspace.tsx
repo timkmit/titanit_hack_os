@@ -5,53 +5,62 @@ type Line = { id: string; role: string; text: string }
 
 function extractSessions(raw: unknown): Array<{ key: string }> {
   if (!raw) return []
-  let arr: unknown[] | null = null
-  if (Array.isArray(raw)) arr = raw
-  else if (typeof raw === "object") {
-    const o = raw as Record<string, unknown>
-    arr = (o.sessions ?? o.items ?? o.entries) as unknown[] | null
-    if (!Array.isArray(arr) && o.snapshot && typeof o.snapshot === "object") {
-      const s = (o.snapshot as Record<string, unknown>).sessions
-      if (Array.isArray(s)) arr = s
+  let sessions: unknown[] | null = null
+  if (Array.isArray(raw)) {
+    sessions = raw
+  } else if (typeof raw === "object") {
+    const obj = raw as Record<string, unknown>
+    sessions = (obj.sessions ?? obj.items ?? obj.entries) as unknown[] | null
+    if (!Array.isArray(sessions) && obj.snapshot && typeof obj.snapshot === "object") {
+      const snapshotSessions = (obj.snapshot as Record<string, unknown>).sessions
+      if (Array.isArray(snapshotSessions)) sessions = snapshotSessions
     }
   }
-  if (!Array.isArray(arr)) return []
-  const out: Array<{ key: string }> = []
-  for (const x of arr) {
-    if (!x || typeof x !== "object") continue
-    const o = x as Record<string, unknown>
-    const key = o.key ?? o.sessionKey
-    if (typeof key === "string" && key) out.push({ key })
+
+  if (!Array.isArray(sessions)) return []
+
+  const result: Array<{ key: string }> = []
+  for (const entry of sessions) {
+    if (!entry || typeof entry !== "object") continue
+    const obj = entry as Record<string, unknown>
+    const key = obj.key ?? obj.sessionKey
+    if (typeof key === "string" && key) result.push({ key })
   }
-  return out
+  return result
 }
 
 async function resolveSessionKey(
-  rpc: (m: string, p?: Record<string, unknown>) => Promise<unknown>
+  rpc: (method: string, params?: Record<string, unknown>) => Promise<unknown>
 ): Promise<string> {
   const listRaw = await rpc("sessions.list", { limit: 40 })
   const sessions = extractSessions(listRaw)
   if (sessions.length > 0) return sessions[0].key
+
   const created = await rpc("sessions.create", { label: "Extension" })
-  const cr = created as Record<string, unknown>
-  const key = cr.key ?? cr.sessionKey
+  const obj = created as Record<string, unknown>
+  const key = obj.key ?? obj.sessionKey
   if (typeof key === "string" && key) return key
-  throw new Error("Не удалось создать сессию")
+
+  throw new Error("Could not create a chat session.")
 }
 
 function contentToDisplayText(content: unknown): string {
   if (content == null) return ""
   if (typeof content === "string") {
-    const t = content.trim()
-    if ((t.startsWith("[") && t.endsWith("]")) || (t.startsWith("{") && t.endsWith("}"))) {
+    const trimmed = content.trim()
+    if (
+      (trimmed.startsWith("[") && trimmed.endsWith("]")) ||
+      (trimmed.startsWith("{") && trimmed.endsWith("}"))
+    ) {
       try {
-        return contentToDisplayText(JSON.parse(t) as unknown)
+        return contentToDisplayText(JSON.parse(trimmed) as unknown)
       } catch {
         return content
       }
     }
     return content
   }
+
   if (Array.isArray(content)) {
     const parts: string[] = []
     for (const block of content) {
@@ -61,18 +70,20 @@ function contentToDisplayText(content: unknown): string {
         continue
       }
       if (typeof block === "object") {
-        const b = block as Record<string, unknown>
-        if (typeof b.text === "string") parts.push(b.text)
-        else if (b.content != null) parts.push(contentToDisplayText(b.content))
-        else if (typeof b.message === "string") parts.push(b.message)
+        const obj = block as Record<string, unknown>
+        if (typeof obj.text === "string") parts.push(obj.text)
+        else if (obj.content != null) parts.push(contentToDisplayText(obj.content))
+        else if (typeof obj.message === "string") parts.push(obj.message)
       }
     }
     return parts.join("")
   }
+
   if (typeof content === "object" && content !== null && "text" in content) {
-    const v = (content as { text?: unknown }).text
-    return typeof v === "string" ? v : contentToDisplayText(v)
+    const text = (content as { text?: unknown }).text
+    return typeof text === "string" ? text : contentToDisplayText(text)
   }
+
   try {
     return JSON.stringify(content)
   } catch {
@@ -80,91 +91,97 @@ function contentToDisplayText(content: unknown): string {
   }
 }
 
-function compactFallbackPayload(r: Record<string, unknown>): string {
-  const o: Record<string, unknown> = { ...r }
-  delete o.__openclaw
-  const keys = Object.keys(o)
+function compactFallbackPayload(row: Record<string, unknown>): string {
+  const payload: Record<string, unknown> = { ...row }
+  delete payload.__openclaw
+  const keys = Object.keys(payload)
   if (keys.length === 0) return ""
-  return JSON.stringify(o, null, 2)
+  return JSON.stringify(payload, null, 2)
 }
 
-function messageRowToText(r: Record<string, unknown>): string {
-  let body = contentToDisplayText(r.content)
+function messageRowToText(row: Record<string, unknown>): string {
+  let body = contentToDisplayText(row.content)
   if (!body.trim()) {
-    body = contentToDisplayText(r.text ?? r.message ?? r.body)
+    body = contentToDisplayText(row.text ?? row.message ?? row.body)
   }
 
-  const errMsg = typeof r.errorMessage === "string" ? r.errorMessage.trim() : ""
-  const stopReason = typeof r.stopReason === "string" ? r.stopReason.trim() : ""
-  const model = typeof r.model === "string" ? r.model.trim() : ""
+  const errorMessage = typeof row.errorMessage === "string" ? row.errorMessage.trim() : ""
+  const stopReason = typeof row.stopReason === "string" ? row.stopReason.trim() : ""
+  const model = typeof row.model === "string" ? row.model.trim() : ""
   const provider =
-    typeof r.provider === "string"
-      ? r.provider.trim()
-      : typeof r.api === "string"
-        ? r.api.trim()
+    typeof row.provider === "string"
+      ? row.provider.trim()
+      : typeof row.api === "string"
+        ? row.api.trim()
         : ""
 
-  if (errMsg) {
+  if (errorMessage) {
     if (body.trim()) {
-      return `${body}\n\nОшибка: ${errMsg}`
+      return `${body}\n\nError: ${errorMessage}`
     }
-    let s = `Ошибка: ${errMsg}`
+    let result = `Error: ${errorMessage}`
     if (model) {
-      s += `\nМодель: ${provider ? `${model} (${provider})` : model}`
+      result += `\nModel: ${provider ? `${model} (${provider})` : model}`
     }
-    return s
+    return result
   }
 
-  if (body.trim()) {
-    return body
-  }
+  if (body.trim()) return body
 
   if (stopReason && stopReason !== "stop") {
     const meta = [model, provider].filter(Boolean).join(", ")
-    return meta ? `Нет текста ответа (${stopReason}). ${meta}` : `Нет текста ответа (${stopReason}).`
+    return meta ? `No response text (${stopReason}). ${meta}` : `No response text (${stopReason}).`
   }
 
   if (model) {
-    return `Пустой ответ. Модель: ${provider ? `${model} (${provider})` : model}`
+    return `Empty response. Model: ${provider ? `${model} (${provider})` : model}`
   }
 
-  return compactFallbackPayload(r)
+  return compactFallbackPayload(row)
 }
 
 function extractHistoryLines(raw: unknown): Line[] {
   if (!raw || typeof raw !== "object") return []
-  const o = raw as Record<string, unknown>
-  const rawList = o.messages ?? o.entries ?? o.items ?? o.lines ?? o.history
+  const obj = raw as Record<string, unknown>
+  const rawList = obj.messages ?? obj.entries ?? obj.items ?? obj.lines ?? obj.history
   if (!Array.isArray(rawList)) return []
+
   const lines: Line[] = []
-  let i = 0
+  let index = 0
   for (const row of rawList) {
-    i += 1
+    index += 1
     if (typeof row === "string") {
-      lines.push({ id: `t-${i}`, role: "log", text: contentToDisplayText(row) })
+      lines.push({ id: `t-${index}`, role: "log", text: contentToDisplayText(row) })
       continue
     }
     if (row && typeof row === "object") {
-      const r = row as Record<string, unknown>
-      const role = String(r.role ?? r.kind ?? "msg")
-      const text = messageRowToText(r)
-      lines.push({ id: `m-${i}-${role}`, role, text })
+      const objRow = row as Record<string, unknown>
+      const role = String(objRow.role ?? objRow.kind ?? "msg")
+      const text = messageRowToText(objRow)
+      lines.push({ id: `m-${index}-${role}`, role, text })
     }
   }
+
   return lines
 }
 
-function bubbleKind(role: string): string {
-  const r = role.toLowerCase()
-  if (r.includes("user") || r === "human") return "user"
-  if (r.includes("assistant") || r.includes("agent") || r === "model") return "assistant"
+function bubbleKind(role: string): "user" | "assistant" | "sys" {
+  const normalized = role.toLowerCase()
+  if (normalized.includes("user") || normalized === "human") return "user"
+  if (
+    normalized.includes("assistant") ||
+    normalized.includes("agent") ||
+    normalized === "model"
+  ) {
+    return "assistant"
+  }
   return "sys"
 }
 
 function labelRole(role: string): string {
-  const k = bubbleKind(role)
-  if (k === "user") return "Вы"
-  if (k === "assistant") return "Агент"
+  const kind = bubbleKind(role)
+  if (kind === "user") return "You"
+  if (kind === "assistant") return "Agent"
   return role
 }
 
@@ -180,10 +197,10 @@ export function ChatWorkspace(props: { gatewayHttpBase: string }) {
   const sessionKeyRef = useRef<string | null>(null)
 
   const refreshHistory = useCallback(async () => {
-    const sk = sessionKeyRef.current
-    if (!sk) return
+    const key = sessionKeyRef.current
+    if (!key) return
     try {
-      const raw = await rpc("chat.history", { sessionKey: sk, limit: 200 })
+      const raw = await rpc("chat.history", { sessionKey: key, limit: 200 })
       setLines(extractHistoryLines(raw))
       setSessionErr("")
     } catch {}
@@ -196,20 +213,26 @@ export function ChatWorkspace(props: { gatewayHttpBase: string }) {
   useEffect(() => {
     if (conn !== "ready") return
     let cancelled = false
+
     void (async () => {
       try {
-        const sk = await resolveSessionKey(rpc)
+        const key = await resolveSessionKey(rpc)
         if (cancelled) return
-        setSessionKey(sk)
-        await rpc("sessions.messages.subscribe", { key: sk })
-        const raw = await rpc("chat.history", { sessionKey: sk, limit: 200 })
+
+        setSessionKey(key)
+        await rpc("sessions.messages.subscribe", { key })
+        const raw = await rpc("chat.history", { sessionKey: key, limit: 200 })
         if (cancelled) return
+
         setLines(extractHistoryLines(raw))
         setSessionErr("")
-      } catch (e) {
-        if (!cancelled) setSessionErr(e instanceof Error ? e.message : String(e))
+      } catch (error) {
+        if (!cancelled) {
+          setSessionErr(error instanceof Error ? error.message : String(error))
+        }
       }
     })()
+
     return () => {
       cancelled = true
     }
@@ -217,12 +240,12 @@ export function ChatWorkspace(props: { gatewayHttpBase: string }) {
 
   useEffect(() => {
     setGatewayEventHandler((msg: GwEventMessage) => {
-      const ev = msg.event.toLowerCase()
+      const event = msg.event.toLowerCase()
       if (
-        ev.includes("chat") ||
-        ev.includes("agent") ||
-        ev.includes("session") ||
-        ev.includes("message")
+        event.includes("chat") ||
+        event.includes("agent") ||
+        event.includes("session") ||
+        event.includes("message")
       ) {
         if (debounceRef.current) clearTimeout(debounceRef.current)
         debounceRef.current = setTimeout(() => void refreshHistory(), 350)
@@ -231,35 +254,36 @@ export function ChatWorkspace(props: { gatewayHttpBase: string }) {
   }, [refreshHistory, setGatewayEventHandler])
 
   useEffect(() => {
-    const el = scrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
+    const element = scrollRef.current
+    if (element) element.scrollTop = element.scrollHeight
   }, [lines])
 
   async function send() {
     const text = input.trim()
-    const sk = sessionKey
-    if (!text || !sk || busy) return
+    const key = sessionKey
+    if (!text || !key || busy) return
+
     setBusy(true)
     setInput("")
     try {
       await rpc("chat.send", {
-        sessionKey: sk,
+        sessionKey: key,
         message: text,
         idempotencyKey: crypto.randomUUID()
       })
       await refreshHistory()
-    } catch (e) {
-      setSessionErr(e instanceof Error ? e.message : String(e))
+    } catch (error) {
+      setSessionErr(error instanceof Error ? error.message : String(error))
     } finally {
       setBusy(false)
     }
   }
 
   async function abortRun() {
-    const sk = sessionKey
-    if (!sk) return
+    const key = sessionKey
+    if (!key) return
     try {
-      await rpc("chat.abort", { sessionKey: sk })
+      await rpc("chat.abort", { sessionKey: key })
       await refreshHistory()
     } catch {}
   }
@@ -268,7 +292,7 @@ export function ChatWorkspace(props: { gatewayHttpBase: string }) {
     return (
       <div className="chat-shell chat-shell--center">
         <div className="spinner" aria-hidden />
-        <p className="muted">Подключение к шлюзу…</p>
+        <p className="muted">Connecting to gateway...</p>
       </div>
     )
   }
@@ -278,7 +302,7 @@ export function ChatWorkspace(props: { gatewayHttpBase: string }) {
       <div className="chat-shell chat-shell--center">
         <p className="field-error">{connError}</p>
         <button type="button" className="btn btn--primary" onClick={() => resetGatewaySession()}>
-          Повторить
+          Retry
         </button>
       </div>
     )
@@ -290,17 +314,17 @@ export function ChatWorkspace(props: { gatewayHttpBase: string }) {
       <div className="chat-meta">
         <span className="muted">WS · {props.gatewayHttpBase.replace(/^https?:\/\//, "")}</span>
         <button type="button" className="btn-inline" onClick={() => void refreshHistory()}>
-          Обновить
+          Refresh
         </button>
       </div>
       <div className="chat-log" ref={scrollRef}>
         {lines.length === 0 ? (
-          <p className="muted chat-empty">Нет сообщений. Напишите ниже.</p>
+          <p className="muted chat-empty">No messages yet. Send a prompt below.</p>
         ) : (
-          lines.map((ln) => (
-            <div key={ln.id} className={`chat-bubble chat-bubble--${bubbleKind(ln.role)}`}>
-              <span className="chat-role">{labelRole(ln.role)}</span>
-              <pre className="chat-text">{ln.text}</pre>
+          lines.map((line) => (
+            <div key={line.id} className={`chat-bubble chat-bubble--${bubbleKind(line.role)}`}>
+              <span className="chat-role">{labelRole(line.role)}</span>
+              <pre className="chat-text">{line.text}</pre>
             </div>
           ))
         )}
@@ -310,18 +334,18 @@ export function ChatWorkspace(props: { gatewayHttpBase: string }) {
           className="chat-input"
           rows={3}
           value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault()
+          onChange={(event) => setInput(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault()
               void send()
             }
           }}
-          placeholder="Сообщение (Enter — отправить, Shift+Enter — строка)"
+          placeholder="Message (Enter to send, Shift+Enter for a new line)"
         />
         <div className="chat-actions">
           <button type="button" className="btn btn--ghost btn--sm" onClick={() => void abortRun()} disabled={busy}>
-            Стоп
+            Stop
           </button>
           <button
             type="button"
@@ -329,7 +353,7 @@ export function ChatWorkspace(props: { gatewayHttpBase: string }) {
             onClick={() => void send()}
             disabled={busy || !sessionKey}
           >
-            Отправить
+            Send
           </button>
         </div>
       </div>

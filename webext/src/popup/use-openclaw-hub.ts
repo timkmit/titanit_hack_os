@@ -15,7 +15,7 @@ export function useOpenclawHub() {
   const [connError, setConnError] = useState("")
   const portRef = useRef<chrome.runtime.Port | null>(null)
   const rpcWaiters = useRef(
-    new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>()
+    new Map<string, { resolve: (value: unknown) => void; reject: (error: Error) => void }>()
   )
   const gwListenerRef = useRef<(msg: GwEventMessage) => void>(() => {})
 
@@ -30,19 +30,24 @@ export function useOpenclawHub() {
           setConnError("")
         } else {
           setConn("error")
-          setConnError(msg.detail ?? "Ошибка подключения")
+          setConnError(msg.detail ?? "Connection error.")
         }
         return
       }
+
       if (msg.type === "rpcRes") {
-        const w = rpcWaiters.current.get(msg.rid)
-        if (w) {
+        const waiter = rpcWaiters.current.get(msg.rid)
+        if (waiter) {
           rpcWaiters.current.delete(msg.rid)
-          if (msg.ok) w.resolve(msg.result)
-          else w.reject(new Error(msg.error ?? "RPC"))
+          if (msg.ok === true) {
+            waiter.resolve(msg.result)
+          } else {
+            waiter.reject(new Error(msg.error ?? "RPC error."))
+          }
         }
         return
       }
+
       if (msg.type === "gwEvent") {
         gwListenerRef.current(msg)
       }
@@ -51,7 +56,7 @@ export function useOpenclawHub() {
     port.onMessage.addListener(onMsg)
     port.onDisconnect.addListener(() => {
       setConn("error")
-      setConnError("Порт отключён")
+      setConnError("Extension port disconnected.")
     })
 
     return () => {
@@ -63,7 +68,8 @@ export function useOpenclawHub() {
 
   const rpc = useCallback((method: string, params: Record<string, unknown> = {}) => {
     const port = portRef.current
-    if (!port) return Promise.reject(new Error("Нет порта"))
+    if (!port) return Promise.reject(new Error("Extension port is not available."))
+
     const rid = crypto.randomUUID()
     return new Promise<unknown>((resolve, reject) => {
       rpcWaiters.current.set(rid, { resolve, reject })

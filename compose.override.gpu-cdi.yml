@@ -1,8 +1,0 @@
-services:
-  ollama:
-    shm_size: "2gb"
-    environment:
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
-    devices:
-      - nvidia.com/gpu=all

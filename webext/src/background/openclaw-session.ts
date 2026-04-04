@@ -1,14 +1,14 @@
 const PROTOCOL = 3
 
 export function httpBaseToWsUrl(httpBase: string): string {
-  const u = new URL(httpBase)
-  const proto = u.protocol === "https:" ? "wss:" : "ws:"
-  return `${proto}//${u.host}/`
+  const url = new URL(httpBase)
+  const protocol = url.protocol === "https:" ? "wss:" : "ws:"
+  return `${protocol}//${url.host}/`
 }
 
-type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void }
+type Pending = { resolve: (value: unknown) => void; reject: (error: Error) => void }
 
-export type GatewayEventHandler = (ev: { event: string; payload?: unknown }) => void
+export type GatewayEventHandler = (event: { event: string; payload?: unknown }) => void
 
 export class OpenClawWsSession {
   private ws: WebSocket | null = null
@@ -37,7 +37,7 @@ export class OpenClawWsSession {
         this.close()
         if (!settled) {
           settled = true
-          reject(new Error("Таймаут подключения к шлюзу"))
+          reject(new Error("Timed out while connecting to the gateway."))
         }
       }, 45_000)
 
@@ -49,22 +49,22 @@ export class OpenClawWsSession {
       }
 
       ws.onerror = () => {
-        finish(() => reject(new Error("Ошибка WebSocket")))
+        finish(() => reject(new Error("WebSocket error.")))
       }
 
       ws.onclose = () => {
         this._connected = false
         if (!this.connectSent) {
-          finish(() => reject(new Error("Соединение закрыто до handshake")))
+          finish(() => reject(new Error("Connection was closed before the handshake finished.")))
         }
       }
 
-      ws.onmessage = (ev) => {
+      ws.onmessage = (event) => {
         try {
-          const msg = JSON.parse(String(ev.data)) as Record<string, unknown>
+          const msg = JSON.parse(String(event.data)) as Record<string, unknown>
           this.onFrame(msg, opts, resolve, reject, finish)
-        } catch (e) {
-          finish(() => reject(e instanceof Error ? e : new Error(String(e))))
+        } catch (error) {
+          finish(() => reject(error instanceof Error ? error : new Error(String(error))))
         }
       }
     })
@@ -73,8 +73,8 @@ export class OpenClawWsSession {
   private onFrame(
     msg: Record<string, unknown>,
     opts: { gatewayToken: string; deviceToken?: string },
-    resolve: (v: { deviceToken?: string }) => void,
-    reject: (e: Error) => void,
+    resolve: (value: { deviceToken?: string }) => void,
+    reject: (error: Error) => void,
     finish: (fn: () => void) => void
   ) {
     if (msg.type === "res") {
@@ -82,10 +82,11 @@ export class OpenClawWsSession {
       const waiter = this.pending.get(id)
       if (waiter) {
         this.pending.delete(id)
-        if (msg.ok) waiter.resolve(msg.payload)
-        else {
+        if (msg.ok) {
+          waiter.resolve(msg.payload)
+        } else {
           const err = msg.error as { message?: string } | undefined
-          waiter.reject(new Error(err?.message ?? "Ошибка шлюза"))
+          waiter.reject(new Error(err?.message ?? "Gateway error."))
         }
       }
       return
@@ -104,7 +105,9 @@ export class OpenClawWsSession {
               })
             )
           })
-          .catch((e) => finish(() => reject(e instanceof Error ? e : new Error(String(e)))))
+          .catch((error) =>
+            finish(() => reject(error instanceof Error ? error : new Error(String(error))))
+          )
         return
       }
       this.onGatewayEvent({ event, payload: msg.payload })
@@ -116,7 +119,7 @@ export class OpenClawWsSession {
     deviceToken?: string
   }): Promise<{ auth?: { deviceToken?: string } }> {
     const ws = this.ws
-    if (!ws) return Promise.reject(new Error("Нет сокета"))
+    if (!ws) return Promise.reject(new Error("WebSocket is not available."))
 
     const id = crypto.randomUUID()
     const auth = opts.deviceToken ? { deviceToken: opts.deviceToken } : { token: opts.gatewayToken }
@@ -136,7 +139,7 @@ export class OpenClawWsSession {
       commands: [] as string[],
       permissions: {} as Record<string, boolean>,
       auth,
-      locale: "ru-RU",
+      locale: "en-US",
       userAgent: "titanit-webext/0.1.0"
     }
 
@@ -152,8 +155,9 @@ export class OpenClawWsSession {
   request(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
     const ws = this.ws
     if (!ws || !this._connected) {
-      return Promise.reject(new Error("Нет соединения со шлюзом"))
+      return Promise.reject(new Error("Gateway connection is not ready."))
     }
+
     const id = crypto.randomUUID()
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject })
