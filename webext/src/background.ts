@@ -1,4 +1,5 @@
 import { OpenClawWsSession, httpBaseToWsUrl } from "./background/openclaw-session"
+import { readStoredAuth, writeStoredAuth } from "./shared/auth-storage"
 import {
   STORAGE_DEVICE_TOKEN,
   STORAGE_GATEWAY_TOKEN,
@@ -7,6 +8,15 @@ import {
 } from "./shared/storage-keys"
 
 const PORT_NAME = "openclaw-hub"
+const DEFAULT_GATEWAY_TOKEN = "replace-with-long-random-secret"
+const APP_URL = chrome.runtime.getURL("src/popup/index.html?mode=window")
+const APP_WINDOW_WIDTH = 560
+const APP_WINDOW_HEIGHT = 820
+
+let appWindowId: number | null = null
+let session: OpenClawWsSession | null = null
+let sessionLock: Promise<OpenClawWsSession> | null = null
+const ports = new Set<chrome.runtime.Port>()
 
 chrome.runtime.onInstalled.addListener(async (details) => {
   if (details.reason === "install") {
@@ -14,16 +24,42 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   }
 })
 
+async function openAppWindow() {
+  if (appWindowId != null) {
+    try {
+      await chrome.windows.update(appWindowId, { focused: true })
+      const tabs = await chrome.tabs.query({ windowId: appWindowId })
+      const firstTab = tabs[0]
+      if (firstTab?.id != null) {
+        await chrome.tabs.update(firstTab.id, { active: true })
+      }
+      return
+    } catch {
+      appWindowId = null
+    }
+  }
+
+  const created = await chrome.windows.create({
+    url: APP_URL,
+    type: "popup",
+    width: APP_WINDOW_WIDTH,
+    height: APP_WINDOW_HEIGHT,
+    focused: true
+  })
+  appWindowId = created.id ?? null
+}
+
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === "OPEN_POPUP") {
-    const url = chrome.runtime.getURL("src/popup/index.html")
-    chrome.windows.create({ url, type: "popup", width: 420, height: 700 })
+    void openAppWindow()
   }
 })
 
-let session: OpenClawWsSession | null = null
-let sessionLock: Promise<OpenClawWsSession> | null = null
-const ports = new Set<chrome.runtime.Port>()
+chrome.windows.onRemoved.addListener((windowId) => {
+  if (windowId === appWindowId) {
+    appWindowId = null
+  }
+})
 
 function broadcast(msg: object) {
   for (const port of ports) {
@@ -33,23 +69,23 @@ function broadcast(msg: object) {
   }
 }
 
-async function readAuth(): Promise<{ httpBase: string; gatewayToken: string; deviceToken?: string }> {
-  const data = await chrome.storage.sync.get([
-    STORAGE_URL,
-    STORAGE_GATEWAY_TOKEN,
-    STORAGE_DEVICE_TOKEN
-  ])
+async function readAuth(): Promise<{ httpBase: string; gatewayToken?: string; deviceToken?: string }> {
+  const data = await readStoredAuth()
   const httpBase = typeof data[STORAGE_URL] === "string" ? data[STORAGE_URL] : ""
   const gatewayToken =
     typeof data[STORAGE_GATEWAY_TOKEN] === "string" ? data[STORAGE_GATEWAY_TOKEN] : ""
   const deviceToken =
     typeof data[STORAGE_DEVICE_TOKEN] === "string" ? data[STORAGE_DEVICE_TOKEN] : undefined
 
-  if (!httpBase || !gatewayToken) {
-    throw new Error("Set the gateway URL and token in the extension settings.")
+  if (!httpBase) {
+    throw new Error("Set the gateway URL in the extension settings")
   }
 
-  return { httpBase, gatewayToken, deviceToken }
+  return {
+    httpBase,
+    gatewayToken: deviceToken ? undefined : gatewayToken || DEFAULT_GATEWAY_TOKEN,
+    deviceToken
+  }
 }
 
 async function getOrCreateSession(): Promise<OpenClawWsSession> {
@@ -69,9 +105,14 @@ async function getOrCreateSession(): Promise<OpenClawWsSession> {
         broadcast({ type: "gwEvent", event: ev.event, payload: ev.payload })
       })
       const { deviceToken: nextDevice } = await nextSession.connect({ gatewayToken, deviceToken })
+
       if (nextDevice) {
-        await chrome.storage.sync.set({ [STORAGE_DEVICE_TOKEN]: nextDevice })
+        await writeStoredAuth({
+          [STORAGE_DEVICE_TOKEN]: nextDevice,
+          [STORAGE_SETUP]: true
+        })
       }
+
       session = nextSession
       return nextSession
     } finally {
@@ -116,7 +157,7 @@ chrome.runtime.onConnect.addListener((port) => {
           port.postMessage({ type: "rpcRes", rid: msg.rid, ok: true, result })
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error)
-          if (/connect|connection|closed|websocket|gateway/i.test(message)) {
+          if (/connection|closed|websocket|gateway/i.test(message)) {
             invalidateSession()
           }
           port.postMessage({ type: "rpcRes", rid: msg.rid, ok: false, error: message })

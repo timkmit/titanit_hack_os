@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     openclaw_config_path: Path = Path("/app/runtime/openclaw/openclaw.json")
     openclaw_host_config_path: Path = Path("/app/runtime/openclaw/openclaw.host.json")
     openclaw_sessions_path: Path = Path("/app/runtime/openclaw/agents/main/sessions")
+    openclaw_browser_media_path: Path = Path("/app/runtime/openclaw/media/browser")
     workspace_path: Path = Path("/app/runtime/workspace")
     audit_export_dir: Path = Path("/app/runtime/artifacts/exports")
 
@@ -53,4 +54,5 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     settings = Settings()
     settings.audit_export_dir.mkdir(parents=True, exist_ok=True)
+    settings.openclaw_browser_media_path.mkdir(parents=True, exist_ok=True)
     return settings
