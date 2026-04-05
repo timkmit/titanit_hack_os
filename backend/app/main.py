@@ -6,15 +6,18 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes.audit import router as audit_router
+from app.api.routes.gigachat import router as gigachat_router
 from app.api.routes.health import router as health_router
 from app.api.routes.system import router as system_router
 from app.core.settings import get_settings
+from app.services.gigachat import GigaChatService
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     async with httpx.AsyncClient() as client:
         app.state.http_client = client
+        app.state.gigachat_service = GigaChatService(get_settings(), client)
         yield
 
 
@@ -36,3 +39,4 @@ app.add_middleware(
 app.include_router(health_router)
 app.include_router(system_router)
 app.include_router(audit_router)
+app.include_router(gigachat_router)

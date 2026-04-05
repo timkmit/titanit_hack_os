@@ -22,6 +22,13 @@ class Settings(BaseSettings):
     frontend_origin: str = "http://localhost:3000,http://127.0.0.1:3000"
     api_host: str = "0.0.0.0"
     api_port: int = 8000
+    gigachat_base_url: str = "https://gigachat.devices.sberbank.ru/api/v1"
+    gigachat_oauth_url: str = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
+    gigachat_scope: str = "GIGACHAT_API_PERS"
+    gigachat_auth_key: str = ""
+    gigachat_client_id: str = ""
+    gigachat_model: str = "GigaChat"
+    gigachat_verify_ssl: bool = True
 
     runtime_root: Path = Path("/app/runtime")
     openclaw_config_path: Path = Path("/app/runtime/openclaw/openclaw.json")

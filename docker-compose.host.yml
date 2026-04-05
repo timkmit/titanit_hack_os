@@ -1,6 +1,9 @@
 services:
   openclaw-gateway:
-    image: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:latest}
+    build:
+      context: .
+      dockerfile: ./docker/openclaw/Dockerfile
+    image: ${OPENCLAW_IMAGE:-titanit_hackathon-openclaw:latest}
     environment:
       HOME: /home/node
       TERM: xterm-256color
@@ -16,13 +19,9 @@ services:
       - "${OPENCLAW_BRIDGE_PORT:-18790}:18790"
     command:
       [
-        "node",
-        "dist/index.js",
-        "gateway",
-        "--bind",
-        "${OPENCLAW_GATEWAY_BIND:-lan}",
-        "--port",
-        "18789",
+        "sh",
+        "-lc",
+        "find /home/node/.openclaw/browser \\( -name 'SingletonLock' -o -name 'SingletonCookie' -o -name 'SingletonSocket' \\) -exec rm -rf {} + 2>/dev/null || true; exec node dist/index.js gateway --bind ${OPENCLAW_GATEWAY_BIND:-lan} --port 18789",
       ]
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -77,12 +76,3 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    ports:
-      - "${FRONTEND_PUBLISH_PORT:-3000}:80"
-    depends_on:
-      api:
-        condition: service_started

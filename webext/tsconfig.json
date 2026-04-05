@@ -10,7 +10,7 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "types": ["chrome", "vite/client"]
+    "types": ["chrome"]
   },
   "include": ["src"]
 }

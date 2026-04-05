@@ -18,13 +18,6 @@
     "48": "icons/48.png",
     "128": "icons/128.png"
   },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
-      "run_at": "document_idle"
-    }
-  ],
   "options_ui": {
     "page": "src/popup/index.html",
     "open_in_tab": true

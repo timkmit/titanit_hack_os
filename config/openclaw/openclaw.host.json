@@ -26,11 +26,12 @@
   "browser": {
     "enabled": true,
     "defaultProfile": "openclaw",
+    "executablePath": "/usr/bin/chromium",
     "headless": true,
     "noSandbox": true,
     "color": "#FF5A36",
     "ssrfPolicy": {
-      "dangerouslyAllowPrivateNetwork": false
+      "dangerouslyAllowPrivateNetwork": true
     },
     "profiles": {
       "openclaw": {
@@ -40,11 +41,15 @@
     }
   },
   "tools": {
-    "profile": "minimal",
-    "allow": [
-      "group:ui",
-      "group:web"
-    ],
+    "profile": "full",
+    "elevated": {
+      "enabled": true,
+      "allowFrom": {
+        "webchat": [
+          "*"
+        ]
+      }
+    },
     "web": {
       "fetch": {
         "enabled": true,
@@ -61,12 +66,12 @@
       "workspace": "~/.openclaw/workspace",
       "timeoutSeconds": 900,
       "model": {
-        "primary": "ollama/qwen2.5:7b-instruct"
+        "primary": "ollama/qwen2.5:14b"
       },
       "models": {
-        "ollama/qwen2.5:7b-instruct": {
+        "ollama/qwen2.5:14b": {
           "params": {
-            "num_ctx": 8192
+            "temperature": 0.2
           }
         }
       }
@@ -77,12 +82,12 @@
     "providers": {
       "ollama": {
         "baseUrl": "http://host.docker.internal:11434",
-        "apiKey": "ollama-local",
         "api": "ollama",
+        "apiKey": "ollama-local",
         "models": [
           {
-            "id": "qwen2.5:7b-instruct",
-            "name": "Qwen2.5 7B Instruct",
+            "id": "qwen2.5:14b",
+            "name": "Qwen 2.5 14B",
             "reasoning": false,
             "input": [
               "text"
@@ -93,11 +98,22 @@
               "cacheRead": 0,
               "cacheWrite": 0
             },
-            "contextWindow": 32768,
+            "contextWindow": 131072,
             "maxTokens": 4096
           }
         ]
       }
     }
+  },
+  "plugins": {
+    "entries": {
+      "browser": {
+        "enabled": true
+      }
+    }
+  },
+  "meta": {
+    "lastTouchedVersion": "2026.4.2",
+    "lastTouchedAt": "2026-04-04T20:28:53.872Z"
   }
 }

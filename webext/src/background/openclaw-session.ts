@@ -1,14 +1,14 @@
 const PROTOCOL = 3
 
 export function httpBaseToWsUrl(httpBase: string): string {
-  const url = new URL(httpBase)
-  const protocol = url.protocol === "https:" ? "wss:" : "ws:"
-  return `${protocol}//${url.host}/`
+  const u = new URL(httpBase)
+  const proto = u.protocol === "https:" ? "wss:" : "ws:"
+  return `${proto}//${u.host}/`
 }
 
-type Pending = { resolve: (value: unknown) => void; reject: (error: Error) => void }
+type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void }
 
-export type GatewayEventHandler = (event: { event: string; payload?: unknown }) => void
+export type GatewayEventHandler = (ev: { event: string; payload?: unknown }) => void
 
 export class OpenClawWsSession {
   private ws: WebSocket | null = null
@@ -25,7 +25,7 @@ export class OpenClawWsSession {
     return this._connected
   }
 
-  connect(opts: { gatewayToken: string; deviceToken?: string }): Promise<{ deviceToken?: string }> {
+  connect(opts: { gatewayToken?: string; deviceToken?: string }): Promise<{ deviceToken?: string }> {
     if (this.ws) this.close()
 
     const ws = new WebSocket(this.wsUrl)
@@ -37,7 +37,7 @@ export class OpenClawWsSession {
         this.close()
         if (!settled) {
           settled = true
-          reject(new Error("Timed out while connecting to the gateway."))
+          reject(new Error("Gateway connection timed out"))
         }
       }, 45_000)
 
@@ -49,19 +49,19 @@ export class OpenClawWsSession {
       }
 
       ws.onerror = () => {
-        finish(() => reject(new Error("WebSocket error.")))
+        finish(() => reject(new Error("WebSocket error")))
       }
 
       ws.onclose = () => {
         this._connected = false
         if (!this.connectSent) {
-          finish(() => reject(new Error("Connection was closed before the handshake finished.")))
+          finish(() => reject(new Error("Connection closed before handshake")))
         }
       }
 
-      ws.onmessage = (event) => {
+      ws.onmessage = (ev) => {
         try {
-          const msg = JSON.parse(String(event.data)) as Record<string, unknown>
+          const msg = JSON.parse(String(ev.data)) as Record<string, unknown>
           this.onFrame(msg, opts, resolve, reject, finish)
         } catch (error) {
           finish(() => reject(error instanceof Error ? error : new Error(String(error))))
@@ -72,9 +72,9 @@ export class OpenClawWsSession {
 
   private onFrame(
     msg: Record<string, unknown>,
-    opts: { gatewayToken: string; deviceToken?: string },
-    resolve: (value: { deviceToken?: string }) => void,
-    reject: (error: Error) => void,
+    opts: { gatewayToken?: string; deviceToken?: string },
+    resolve: (v: { deviceToken?: string }) => void,
+    reject: (e: Error) => void,
     finish: (fn: () => void) => void
   ) {
     if (msg.type === "res") {
@@ -86,7 +86,7 @@ export class OpenClawWsSession {
           waiter.resolve(msg.payload)
         } else {
           const err = msg.error as { message?: string } | undefined
-          waiter.reject(new Error(err?.message ?? "Gateway error."))
+          waiter.reject(new Error(err?.message ?? "Gateway error"))
         }
       }
       return
@@ -115,14 +115,18 @@ export class OpenClawWsSession {
   }
 
   private sendConnectRequest(opts: {
-    gatewayToken: string
+    gatewayToken?: string
     deviceToken?: string
   }): Promise<{ auth?: { deviceToken?: string } }> {
     const ws = this.ws
-    if (!ws) return Promise.reject(new Error("WebSocket is not available."))
+    if (!ws) return Promise.reject(new Error("Socket is not open"))
 
     const id = crypto.randomUUID()
-    const auth = opts.deviceToken ? { deviceToken: opts.deviceToken } : { token: opts.gatewayToken }
+    const auth = opts.deviceToken
+      ? { deviceToken: opts.deviceToken }
+      : opts.gatewayToken
+        ? { token: opts.gatewayToken }
+        : {}
 
     const params = {
       minProtocol: PROTOCOL,
@@ -139,7 +143,7 @@ export class OpenClawWsSession {
       commands: [] as string[],
       permissions: {} as Record<string, boolean>,
       auth,
-      locale: "en-US",
+      locale: "ru-RU",
       userAgent: "titanit-webext/0.1.0"
     }
 
@@ -155,9 +159,8 @@ export class OpenClawWsSession {
   request(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
     const ws = this.ws
     if (!ws || !this._connected) {
-      return Promise.reject(new Error("Gateway connection is not ready."))
+      return Promise.reject(new Error("Gateway is not connected"))
     }
-
     const id = crypto.randomUUID()
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject })
