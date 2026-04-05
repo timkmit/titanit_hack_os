@@ -8,11 +8,13 @@ dist/
 artifacts/exports/*.zip
 config/openclaw/agents/main/sessions/*.jsonl
 config/openclaw/agents/main/sessions/sessions.json
+config/openclaw/browser/
 config/openclaw/devices/paired.json
 config/openclaw/devices/pending.json
 config/openclaw/identity/*.json
 config/openclaw/logs/*.json
 config/openclaw/logs/*.jsonl
+config/openclaw/media/
 config/openclaw/*.bak
 config/openclaw/tasks/*.sqlite
 config/openclaw/tasks/*.sqlite-shm

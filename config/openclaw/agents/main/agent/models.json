@@ -1,13 +1,13 @@
 {
   "providers": {
     "ollama": {
-      "baseUrl": "http://host.docker.internal:11434",
+      "baseUrl": "https://grotesquely-admirable-grebe.cloudpub.ru",
       "apiKey": "OLLAMA_API_KEY",
       "api": "ollama",
       "models": [
         {
-          "id": "qwen2.5:7b-instruct",
-          "name": "Qwen2.5 7B Instruct",
+          "id": "qwen2.5:14b",
+          "name": "Qwen 2.5 14B",
           "reasoning": false,
           "input": [
             "text"
@@ -18,7 +18,7 @@
             "cacheRead": 0,
             "cacheWrite": 0
           },
-          "contextWindow": 32768,
+          "contextWindow": 131072,
           "maxTokens": 4096,
           "api": "ollama"
         }

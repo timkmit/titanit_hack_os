@@ -61,10 +61,10 @@
       "workspace": "~/.openclaw/workspace",
       "timeoutSeconds": 900,
       "model": {
-        "primary": "ollama/qwen2.5:7b-instruct"
+        "primary": "ollama/qwen2.5:14b"
       },
       "models": {
-        "ollama/qwen2.5:7b-instruct": {
+        "ollama/qwen2.5:14b": {
           "params": {
             "num_ctx": 8192
           }
@@ -76,13 +76,13 @@
     "mode": "merge",
     "providers": {
       "ollama": {
-        "baseUrl": "http://host.docker.internal:11434",
+        "baseUrl": "https://grotesquely-admirable-grebe.cloudpub.ru",
         "apiKey": "ollama-local",
         "api": "ollama",
         "models": [
           {
-            "id": "qwen2.5:7b-instruct",
-            "name": "Qwen2.5 7B Instruct",
+            "id": "qwen2.5:14b",
+            "name": "Qwen 2.5 14B",
             "reasoning": false,
             "input": [
               "text"
@@ -93,7 +93,7 @@
               "cacheRead": 0,
               "cacheWrite": 0
             },
-            "contextWindow": 32768,
+            "contextWindow": 131072,
             "maxTokens": 4096
           }
         ]

@@ -47,7 +47,7 @@ services:
       dockerfile: Dockerfile
     environment:
       OPENCLAW_BASE_URL: ${OPENCLAW_BASE_URL:-http://openclaw-gateway:18789}
-      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      OLLAMA_BASE_URL: https://grotesquely-admirable-grebe.cloudpub.ru
       OPENCLAW_PUBLIC_URL: ${OPENCLAW_PUBLIC_URL:-http://localhost:18789}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000,http://127.0.0.1:3000}
       API_HOST: ${API_HOST:-0.0.0.0}
