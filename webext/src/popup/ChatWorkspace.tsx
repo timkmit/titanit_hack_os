@@ -38,6 +38,71 @@ const EXTERNAL_WRAPPER_RE =
 const PSEUDO_TOOL_RE =
   /```browser[\s\S]*?```|^\s*browser\(.*\)\s*\$result\s*$|^\s*\$result\.[^\n]*$/gim
 
+const PENDING_ASSISTANT_PLACEHOLDER = "Думаю..."
+
+function mergeStreamDisplayText(prev: string, next: string): string {
+  const base = prev === PENDING_ASSISTANT_PLACEHOLDER ? "" : prev
+  if (!next) return prev
+  if (!base) return next
+  if (next.startsWith(base)) return next
+  if (base.startsWith(next) && next.length > 0) return base
+  return base + next
+}
+
+function messageRoleLower(message: unknown): string {
+  if (!message || typeof message !== "object") return ""
+  const r = (message as Record<string, unknown>).role
+  return typeof r === "string" ? r.toLowerCase() : ""
+}
+
+function extractChatEventStreamText(payload: Record<string, unknown>): string | null {
+  if (payload.message != null) {
+    const role = messageRoleLower(payload.message)
+    if (role.includes("user") || role === "human") return null
+    const t = contentToDisplayText(payload.message)
+    if (t) return t
+  }
+  for (const key of ["text", "chunk", "delta"] as const) {
+    const v = payload[key]
+    if (typeof v === "string" && v.trim()) return stripGatewayEnvelope(v)
+  }
+  return null
+}
+
+function extractAgentEventStreamText(payload: Record<string, unknown>): string | null {
+  const data =
+    payload.data && typeof payload.data === "object" ? (payload.data as Record<string, unknown>) : null
+  if (data?.message != null) {
+    const role = messageRoleLower(data.message)
+    if (!role.includes("user") && role !== "human") {
+      const t = contentToDisplayText(data.message)
+      if (t) return t
+    }
+  }
+  const nested = data ?? payload
+  for (const key of ["text", "delta", "chunk", "token"] as const) {
+    const v = nested[key]
+    if (typeof v === "string" && v.trim()) return stripGatewayEnvelope(v)
+  }
+  return null
+}
+
+function sessionKeyFromAgentPayload(payload: Record<string, unknown>): string {
+  const data =
+    payload.data && typeof payload.data === "object" ? (payload.data as Record<string, unknown>) : null
+  const fromData = data && typeof data.sessionKey === "string" ? data.sessionKey : ""
+  if (fromData) return fromData
+  return typeof payload.sessionKey === "string" ? payload.sessionKey : ""
+}
+
+function findLastPendingAssistantIndex(lines: Line[]): number {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]
+    if (line.pending && line.role.toLowerCase().includes("assistant")) return i
+  }
+  return -1
+}
+
 function buildSessionLabelFromPrompt(text: string): string {
   const normalized = text.replace(/\s+/g, " ").trim()
   if (!normalized) return "New chat"
@@ -336,14 +401,13 @@ async function resolveStoredSessionKey(
   const stored = await readStoredAuth()
   const storedKey =
     typeof stored[STORAGE_SESSION_KEY] === "string" ? stored[STORAGE_SESSION_KEY].trim() : ""
-  if (storedKey) {
-    try {
-      await rpc("sessions.messages.subscribe", { key: storedKey })
-      await rpc("chat.history", { sessionKey: storedKey, limit: 5 })
-      return storedKey
-    } catch {}
+  if (!storedKey) return null
+  try {
+    await rpc("sessions.messages.subscribe", { key: storedKey })
+  } catch {
+    // ignr
   }
-  return null
+  return storedKey
 }
 
 function bubbleKind(role: string): "user" | "assistant" | "sys" {
@@ -353,6 +417,87 @@ function bubbleKind(role: string): "user" | "assistant" | "sys" {
     return "assistant"
   }
   return "sys"
+}
+
+function linePrimaryText(line: Line): string {
+  const b = line.blocks[0]
+  return b?.type === "text" ? b.text : ""
+}
+
+function normalizeForHistoryMatch(text: string): string {
+  return stripGatewayEnvelope(text).replace(/\s+/g, " ").trim()
+}
+
+function mergeServerHistoryWithPending(previous: Line[], server: Line[]): Line[] {
+  const pending = previous.filter((l) => l.pending)
+  if (pending.length === 0) return server
+
+  let merged = server.slice()
+  for (const p of pending) {
+    const raw = linePrimaryText(p)
+    const plain = normalizeForHistoryMatch(raw)
+    const kind = bubbleKind(p.role)
+
+    if (kind === "user") {
+      if (plain.length === 0) continue
+      const onServer = merged.some((l) => {
+        if (bubbleKind(l.role) !== "user") return false
+        const t = normalizeForHistoryMatch(linePrimaryText(l))
+        return t.includes(plain) || plain.includes(t)
+      })
+      if (!onServer) merged.push(p)
+      continue
+    }
+
+    if (kind === "assistant") {
+      if (raw === PENDING_ASSISTANT_PLACEHOLDER || !plain) {
+        const last = merged[merged.length - 1]
+        const lastIsUser = last != null && bubbleKind(last.role) === "user"
+        if (lastIsUser) {
+          merged.push(p)
+          continue
+        }
+        const lastA = [...merged].reverse().find((l) => bubbleKind(l.role) === "assistant")
+        const lt = lastA ? normalizeForHistoryMatch(linePrimaryText(lastA)) : ""
+        if (!lastA || lt.length < 2) merged.push(p)
+        continue
+      }
+
+      const lastA = [...merged].reverse().find((l) => bubbleKind(l.role) === "assistant")
+      const serverPlain = lastA ? normalizeForHistoryMatch(linePrimaryText(lastA)) : ""
+      if (!lastA || serverPlain.length < plain.length) {
+        merged.push(p)
+      }
+    }
+  }
+
+  return merged
+}
+
+function growPendingAssistantFromServerHistory(previous: Line[], server: Line[]): Line[] {
+  const idx = findLastPendingAssistantIndex(previous)
+  if (idx < 0) return previous
+
+  const lastSrv = [...server].reverse().find((l) => bubbleKind(l.role) === "assistant")
+  if (!lastSrv) return previous
+
+  const srvRaw = linePrimaryText(lastSrv)
+  if (!srvRaw.trim()) return previous
+
+  const line = previous[idx]
+  const prevRaw = linePrimaryText(line)
+  const prevNorm = normalizeForHistoryMatch(prevRaw)
+  const srvNorm = normalizeForHistoryMatch(srvRaw)
+
+  if (prevRaw === PENDING_ASSISTANT_PLACEHOLDER) {
+    if (srvNorm.length === 0) return previous
+  } else if (srvNorm.length <= prevNorm.length) {
+    return previous
+  }
+
+  const next = previous.slice()
+  next[idx] = { ...line, blocks: [{ type: "text", text: srvRaw }] }
+  return next
 }
 
 function labelRole(role: string): string {
@@ -444,8 +589,15 @@ function RenderBlocks(props: { blocks: DisplayBlock[] }) {
 
 function ChatLine(props: { line: Line }) {
   const kind = bubbleKind(props.line.role)
+  const streaming =
+    props.line.pending &&
+    kind === "assistant" &&
+    props.line.blocks[0]?.type === "text" &&
+    props.line.blocks[0].text !== PENDING_ASSISTANT_PLACEHOLDER
   return (
-    <div className={`chat-bubble chat-bubble--${kind}${props.line.pending ? " chat-bubble--pending" : ""}`}>
+    <div
+      className={`chat-bubble chat-bubble--${kind}${props.line.pending ? " chat-bubble--pending" : ""}${streaming ? " chat-bubble--streaming" : ""}`}
+    >
       <span className="chat-role">{labelRole(props.line.role)}</span>
       <RenderBlocks blocks={props.line.blocks} />
       {props.line.technicalText ? (
@@ -477,38 +629,51 @@ export function ChatWorkspace(props: { gatewayHttpBase: string }) {
   const autoScrollRef = useRef(true)
   const screenshotSinceRef = useRef<number | null>(null)
   const lastScreenshotNameRef = useRef<string | null>(null)
+  const streamSeqRef = useRef<{ runId: string; seq: number }>({ runId: "", seq: -1 })
+  const busyRef = useRef(false)
   const apiBase = deriveApiBase(props.gatewayHttpBase)
 
-  const refreshHistory = useCallback(async () => {
-    const key = sessionKeyRef.current
-    if (!key) return
-    try {
-      const raw = await rpc("chat.history", { sessionKey: key, limit: 200 })
-      let nextLines = extractHistoryLines(raw)
-      const screenshotSince = screenshotSinceRef.current
-      if (screenshotSince != null) {
-        try {
-          const latestScreenshot = await fetchLatestBrowserScreenshot(apiBase, screenshotSince)
-          if (latestScreenshot && latestScreenshot.name !== lastScreenshotNameRef.current) {
-            lastScreenshotNameRef.current = latestScreenshot.name
-            nextLines = nextLines.concat({
-              id: `shot-${latestScreenshot.name}`,
-              role: "browser",
-              blocks: [
-                {
-                  type: "text",
-                  text: `Screenshot: ${apiBase}${latestScreenshot.url}`
-                }
-              ]
-            })
-            screenshotSinceRef.current = null
+  const refreshHistory = useCallback(
+    async (opts?: { force?: boolean; streamingPoll?: boolean }) => {
+      const key = sessionKeyRef.current
+      if (!key) return
+      const allowDuringBusy = opts?.force === true || opts?.streamingPoll === true
+      if (!allowDuringBusy && busyRef.current) return
+      try {
+        const raw = await rpc("chat.history", { sessionKey: key, limit: 200 })
+        let nextLines = extractHistoryLines(raw)
+        const screenshotSince = screenshotSinceRef.current
+        if (screenshotSince != null) {
+          try {
+            const latestScreenshot = await fetchLatestBrowserScreenshot(apiBase, screenshotSince)
+            if (latestScreenshot && latestScreenshot.name !== lastScreenshotNameRef.current) {
+              lastScreenshotNameRef.current = latestScreenshot.name
+              nextLines = nextLines.concat({
+                id: `shot-${latestScreenshot.name}`,
+                role: "browser",
+                blocks: [
+                  {
+                    type: "text",
+                    text: `Screenshot: ${apiBase}${latestScreenshot.url}`
+                  }
+                ]
+              })
+              screenshotSinceRef.current = null
+            }
+          } catch {}
+        }
+        setLines((cur) => {
+          if (nextLines.length === 0 && cur.length > 0 && opts?.streamingPoll) {
+            return cur
           }
-        } catch {}
-      }
-      setLines(nextLines)
-      setSessionErr("")
-    } catch {}
-  }, [apiBase, rpc])
+          const grown = growPendingAssistantFromServerHistory(cur, nextLines)
+          return mergeServerHistoryWithPending(grown, nextLines)
+        })
+        setSessionErr("")
+      } catch {}
+    },
+    [apiBase, rpc]
+  )
 
   const refreshSessions = useCallback(async () => {
     try {
@@ -562,12 +727,29 @@ export function ChatWorkspace(props: { gatewayHttpBase: string }) {
         const key = await resolveStoredSessionKey(rpc)
         if (cancelled) return
         if (key) {
+          sessionKeyRef.current = key
           setSessionKey(key)
           await writeStoredAuth({ [STORAGE_SESSION_KEY]: key })
-          await rpc("sessions.messages.subscribe", { key })
+          try {
+            await rpc("sessions.messages.subscribe", { key })
+          } catch {
+            /* key already validated in resolveStoredSessionKey */
+          }
+          try {
+            await rpc("sessions.subscribe")
+          } catch {
+            /* optional: session index events */
+          }
           const raw = await rpc("chat.history", { sessionKey: key, limit: 200 })
           if (cancelled) return
-          setLines(extractHistoryLines(raw))
+          const initialLines = extractHistoryLines(raw)
+          setLines(initialLines)
+          if (initialLines.length === 0) {
+            setTimeout(() => {
+              if (cancelled) return
+              void refreshHistory({ force: true })
+            }, 150)
+          }
         } else {
           setSessionKey(null)
           setLines([])
@@ -581,11 +763,97 @@ export function ChatWorkspace(props: { gatewayHttpBase: string }) {
     return () => {
       cancelled = true
     }
-  }, [conn, refreshSessions, rpc])
+  }, [conn, refreshHistory, refreshSessions, rpc])
 
   useEffect(() => {
     setGatewayEventHandler((msg: GwEventMessage) => {
-      const event = msg.event.toLowerCase()
+      const eventRaw = msg.event
+      const event = eventRaw.toLowerCase()
+
+      const isChatPayloadEvent =
+        eventRaw === "chat" ||
+        (eventRaw.startsWith("chat.") && !eventRaw.toLowerCase().includes("side_result"))
+
+      if (isChatPayloadEvent && msg.payload && typeof msg.payload === "object") {
+        const p = msg.payload as Record<string, unknown>
+        const sk = typeof p.sessionKey === "string" ? p.sessionKey : ""
+        const currentKey = sessionKeyRef.current
+        if (sk && currentKey && sk === currentKey) {
+          const state = typeof p.state === "string" ? p.state.toLowerCase() : ""
+          const runId = typeof p.runId === "string" ? p.runId : ""
+          const seq = typeof p.seq === "number" ? p.seq : -1
+
+          if (state === "final" || state === "error" || state === "aborted") {
+            streamSeqRef.current = { runId: "", seq: -1 }
+            if (debounceRef.current) clearTimeout(debounceRef.current)
+            debounceRef.current = setTimeout(() => void refreshHistory({ force: true }), 80)
+            return
+          }
+
+          const treatAsDelta = state === "delta" || (!state && p.message != null)
+          if (treatAsDelta) {
+            if (runId && seq >= 0) {
+              const last = streamSeqRef.current
+              if (last.runId === runId && seq < last.seq) {
+                return
+              }
+              streamSeqRef.current = { runId, seq }
+            }
+            const text = extractChatEventStreamText(p)
+            if (text) {
+              setLines((lines) => {
+                const i = findLastPendingAssistantIndex(lines)
+                if (i < 0) return lines
+                const line = lines[i]
+                const prev = line.blocks[0]?.type === "text" ? line.blocks[0].text : ""
+                const merged = mergeStreamDisplayText(prev, text)
+                if (merged === prev) return lines
+                const next = lines.slice()
+                next[i] = { ...line, blocks: [{ type: "text", text: merged }] }
+                return next
+              })
+              return
+            }
+          }
+        }
+      }
+
+      if (event === "agent" && msg.payload && typeof msg.payload === "object") {
+        const p = msg.payload as Record<string, unknown>
+        const sk = sessionKeyFromAgentPayload(p)
+        if (sk && sessionKeyRef.current && sk === sessionKeyRef.current) {
+          const stream = typeof p.stream === "string" ? p.stream.toLowerCase() : ""
+          if (stream.includes("tool")) {
+            // ignr
+          } else {
+            const runId = typeof p.runId === "string" ? p.runId : ""
+            const seq = typeof p.seq === "number" ? p.seq : -1
+            if (runId && seq >= 0) {
+              const last = streamSeqRef.current
+              if (last.runId === runId && seq < last.seq) {
+                return
+              }
+              streamSeqRef.current = { runId, seq }
+            }
+            const text = extractAgentEventStreamText(p)
+            if (text) {
+              setLines((lines) => {
+                const i = findLastPendingAssistantIndex(lines)
+                if (i < 0) return lines
+                const line = lines[i]
+                const prev = line.blocks[0]?.type === "text" ? line.blocks[0].text : ""
+                const merged = mergeStreamDisplayText(prev, text)
+                if (merged === prev) return lines
+                const next = lines.slice()
+                next[i] = { ...line, blocks: [{ type: "text", text: merged }] }
+                return next
+              })
+              return
+            }
+          }
+        }
+      }
+
       if (
         event.includes("chat") ||
         event.includes("agent") ||
@@ -625,12 +893,14 @@ export function ChatWorkspace(props: { gatewayHttpBase: string }) {
       id: `pending-agent-${crypto.randomUUID()}`,
       role: "assistant",
       pending: true,
-      blocks: [{ type: "text", text: "Думаю..." }]
+      blocks: [{ type: "text", text: PENDING_ASSISTANT_PLACEHOLDER }]
     }
 
     screenshotSinceRef.current = Date.now()
+    streamSeqRef.current = { runId: "", seq: -1 }
 
     flushSync(() => {
+      busyRef.current = true
       setBusy(true)
       setInput("")
       autoScrollRef.current = true
@@ -645,8 +915,8 @@ export function ChatWorkspace(props: { gatewayHttpBase: string }) {
 
       if (streamPollRef.current) clearInterval(streamPollRef.current)
       streamPollRef.current = setInterval(() => {
-        void refreshHistory()
-      }, 900)
+        void refreshHistory({ streamingPoll: true })
+      }, 280)
 
       const sendPromise = rpc("chat.send", {
         sessionKey: key,
@@ -654,10 +924,10 @@ export function ChatWorkspace(props: { gatewayHttpBase: string }) {
         idempotencyKey: crypto.randomUUID()
       })
       setTimeout(() => {
-        void refreshHistory()
+        void refreshHistory({ streamingPoll: true })
       }, 300)
       await sendPromise
-      await refreshHistory()
+      await refreshHistory({ force: true })
       await refreshSessions()
     } catch (error) {
       setLines((current) => current.filter((line) => !line.pending))
@@ -667,6 +937,7 @@ export function ChatWorkspace(props: { gatewayHttpBase: string }) {
         clearInterval(streamPollRef.current)
         streamPollRef.current = null
       }
+      busyRef.current = false
       setBusy(false)
     }
   }
@@ -718,7 +989,7 @@ export function ChatWorkspace(props: { gatewayHttpBase: string }) {
           <button type="button" className="btn-inline" onClick={() => void createFreshSession()} disabled={busy}>
             New chat
           </button>
-          <button type="button" className="btn-inline" onClick={() => void refreshHistory()}>
+          <button type="button" className="btn-inline" onClick={() => void refreshHistory({ force: true })}>
             Refresh
           </button>
         </div>

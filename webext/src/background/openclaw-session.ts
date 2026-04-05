@@ -128,7 +128,8 @@ export class OpenClawWsSession {
       minProtocol: PROTOCOL,
       maxProtocol: PROTOCOL,
       client: {
-        id: "openclaw-control-ui",
+        id: "openclaw-tui",
+        displayName: "Titanit extension",
         version: "0.1.0",
         platform: "chrome-extension",
         mode: "ui"
