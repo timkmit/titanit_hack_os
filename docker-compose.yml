@@ -1,6 +1,12 @@
 services:
   openclaw-gateway:
-    image: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:latest}
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+      args:
+        OPENCLAW_IMAGE: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:latest}
+    image: titanit-openclaw-gateway:latest
+    shm_size: "1gb"
     environment:
       HOME: /home/node
       TERM: xterm-256color

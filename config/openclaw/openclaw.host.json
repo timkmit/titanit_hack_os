@@ -30,7 +30,7 @@
     "noSandbox": true,
     "color": "#FF5A36",
     "ssrfPolicy": {
-      "dangerouslyAllowPrivateNetwork": false
+      "dangerouslyAllowPrivateNetwork": true
     },
     "profiles": {
       "openclaw": {
@@ -51,8 +51,7 @@
         "maxCharsCap": 50000
       },
       "search": {
-        "enabled": true,
-        "maxResults": 5
+        "enabled": false
       }
     }
   },

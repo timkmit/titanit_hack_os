@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes.audit import router as audit_router
 from app.api.routes.health import router as health_router
 from app.api.routes.media import router as media_router
+from app.api.routes.page_extract import router as page_extract_router
 from app.api.routes.system import router as system_router
 from app.core.settings import get_settings
 
@@ -38,3 +39,4 @@ app.include_router(health_router)
 app.include_router(system_router)
 app.include_router(audit_router)
 app.include_router(media_router)
+app.include_router(page_extract_router, prefix="/api/tools", tags=["tools"])
