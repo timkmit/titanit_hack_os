@@ -2,7 +2,7 @@
 
 Browser defaults for this deployment:
 
-- Gateway image is built from `gateway/Dockerfile` (Playwright Chromium). Plain `ghcr.io/openclaw/openclaw` without this layer has **no browser** → “No supported browser found”.
+- Gateway image is built from `gateway/Dockerfile` (Playwright Chromium + symlink `/usr/local/bin/openclaw-chromium`). Config sets `browser.executablePath` to that binary — OpenClaw does not auto-detect Playwright’s cache path.
 - Primary browser profile: `openclaw`
 - Execution mode: headless
 - Preferred interaction loop: `snapshot -> act -> verify`

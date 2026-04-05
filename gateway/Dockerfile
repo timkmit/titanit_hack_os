@@ -10,6 +10,10 @@ RUN --mount=type=cache,id=openclaw-apt-cache,target=/var/cache/apt,sharing=locke
  && PLAYWRIGHT_BROWSERS_PATH=/home/node/.cache/ms-playwright \
     node /app/node_modules/playwright-core/cli.js install --with-deps chromium \
  && chown -R node:node /home/node/.cache/ms-playwright \
+ && CHROME="$(find /home/node/.cache/ms-playwright -type f \( -path '*/chrome-linux/chrome' -o -path '*/chrome-linux64/chrome' \) | head -n1)" \
+ && test -n "$CHROME" \
+ && chmod +x "$CHROME" \
+ && ln -sf "$CHROME" /usr/local/bin/openclaw-chromium \
  && rm -rf /var/lib/apt/lists/*
 
 USER node

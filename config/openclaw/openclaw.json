@@ -25,6 +25,7 @@
   },
   "browser": {
     "enabled": true,
+    "executablePath": "/usr/local/bin/openclaw-chromium",
     "defaultProfile": "openclaw",
     "headless": true,
     "noSandbox": true,
