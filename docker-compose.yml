@@ -1,9 +1,6 @@
 services:
   openclaw-gateway:
-    build:
-      context: .
-      dockerfile: ./docker/openclaw/Dockerfile
-    image: ${OPENCLAW_IMAGE:-titanit_hackathon-openclaw:latest}
+    image: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:latest}
     environment:
       HOME: /home/node
       TERM: xterm-256color
@@ -21,9 +18,13 @@ services:
       - "${OPENCLAW_BRIDGE_PORT:-18790}:18790"
     command:
       [
-        "sh",
-        "-lc",
-        "find /home/node/.openclaw/browser \\( -name 'SingletonLock' -o -name 'SingletonCookie' -o -name 'SingletonSocket' \\) -exec rm -rf {} + 2>/dev/null || true; exec node dist/index.js gateway --bind ${OPENCLAW_GATEWAY_BIND:-lan} --port 18789",
+        "node",
+        "dist/index.js",
+        "gateway",
+        "--bind",
+        "${OPENCLAW_GATEWAY_BIND:-lan}",
+        "--port",
+        "18789",
       ]
     healthcheck:
       test:
@@ -51,13 +52,6 @@ services:
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000,http://127.0.0.1:3000}
       API_HOST: ${API_HOST:-0.0.0.0}
       API_PORT: ${API_PORT:-8000}
-      GIGACHAT_BASE_URL: ${GIGACHAT_BASE_URL:-https://gigachat.devices.sberbank.ru/api/v1}
-      GIGACHAT_OAUTH_URL: ${GIGACHAT_OAUTH_URL:-https://ngw.devices.sberbank.ru:9443/api/v2/oauth}
-      GIGACHAT_SCOPE: ${GIGACHAT_SCOPE:-GIGACHAT_API_PERS}
-      GIGACHAT_AUTH_KEY: ${GIGACHAT_AUTH_KEY:-}
-      GIGACHAT_CLIENT_ID: ${GIGACHAT_CLIENT_ID:-}
-      GIGACHAT_MODEL: ${GIGACHAT_MODEL:-GigaChat}
-      GIGACHAT_VERIFY_SSL: ${GIGACHAT_VERIFY_SSL:-true}
     ports:
       - "${API_PUBLISH_PORT:-8000}:8000"
     volumes:
@@ -83,3 +77,12 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "${FRONTEND_PUBLISH_PORT:-3000}:80"
+    depends_on:
+      api:
+        condition: service_started

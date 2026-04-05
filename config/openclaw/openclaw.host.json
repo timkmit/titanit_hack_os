@@ -26,12 +26,11 @@
   "browser": {
     "enabled": true,
     "defaultProfile": "openclaw",
-    "executablePath": "/usr/bin/chromium",
     "headless": true,
     "noSandbox": true,
     "color": "#FF5A36",
     "ssrfPolicy": {
-      "dangerouslyAllowPrivateNetwork": true
+      "dangerouslyAllowPrivateNetwork": false
     },
     "profiles": {
       "openclaw": {
@@ -41,15 +40,11 @@
     }
   },
   "tools": {
-    "profile": "full",
-    "elevated": {
-      "enabled": true,
-      "allowFrom": {
-        "webchat": [
-          "*"
-        ]
-      }
-    },
+    "profile": "minimal",
+    "allow": [
+      "group:ui",
+      "group:web"
+    ],
     "web": {
       "fetch": {
         "enabled": true,
@@ -66,12 +61,12 @@
       "workspace": "~/.openclaw/workspace",
       "timeoutSeconds": 900,
       "model": {
-        "primary": "ollama/qwen2.5:14b"
+        "primary": "ollama/qwen2.5:7b-instruct"
       },
       "models": {
-        "ollama/qwen2.5:14b": {
+        "ollama/qwen2.5:7b-instruct": {
           "params": {
-            "temperature": 0.2
+            "num_ctx": 8192
           }
         }
       }
@@ -82,12 +77,12 @@
     "providers": {
       "ollama": {
         "baseUrl": "http://host.docker.internal:11434",
-        "api": "ollama",
         "apiKey": "ollama-local",
+        "api": "ollama",
         "models": [
           {
-            "id": "qwen2.5:14b",
-            "name": "Qwen 2.5 14B",
+            "id": "qwen2.5:7b-instruct",
+            "name": "Qwen2.5 7B Instruct",
             "reasoning": false,
             "input": [
               "text"
@@ -98,22 +93,11 @@
               "cacheRead": 0,
               "cacheWrite": 0
             },
-            "contextWindow": 131072,
+            "contextWindow": 32768,
             "maxTokens": 4096
           }
         ]
       }
     }
-  },
-  "plugins": {
-    "entries": {
-      "browser": {
-        "enabled": true
-      }
-    }
-  },
-  "meta": {
-    "lastTouchedVersion": "2026.4.2",
-    "lastTouchedAt": "2026-04-04T20:28:53.872Z"
   }
 }

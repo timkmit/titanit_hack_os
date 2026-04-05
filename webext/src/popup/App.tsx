@@ -1,16 +1,12 @@
 import React, { useCallback, useEffect, useState } from "react"
 import { ChatWorkspace } from "./ChatWorkspace"
 import {
-  STORAGE_DEVICE_TOKEN,
   STORAGE_GATEWAY_TOKEN,
-  STORAGE_SESSION_KEY,
   STORAGE_SETUP,
   STORAGE_URL
 } from "../shared/storage-keys"
-import { readStoredAuth, writeStoredAuth } from "../shared/auth-storage"
 
 const DEFAULT_URL = import.meta.env.VITE_OPENCLAW_URL || "http://localhost:18789"
-const DEFAULT_GATEWAY_TOKEN = "replace-with-long-random-secret"
 
 function normalizeUrl(raw: string): string {
   let value = raw.trim()
@@ -21,9 +17,9 @@ function normalizeUrl(raw: string): string {
   return value
 }
 
-function isValidHttpUrl(raw: string): boolean {
+function isValidHttpUrl(value: string): boolean {
   try {
-    const url = new URL(raw)
+    const url = new URL(value)
     return url.protocol === "http:" || url.protocol === "https:"
   } catch {
     return false
@@ -36,55 +32,38 @@ function gatewayHealthUrl(base: string): string {
 
 async function checkGatewayReachable(base: string): Promise<boolean> {
   try {
-    const res = await fetch(gatewayHealthUrl(base), { method: "GET", cache: "no-store" })
-    return res.ok
+    const response = await fetch(gatewayHealthUrl(base), { method: "GET", cache: "no-store" })
+    return response.ok
   } catch {
     return false
   }
 }
 
 export function App() {
-  const isDetachedWindow = new URLSearchParams(window.location.search).get("mode") === "window"
   const [phase, setPhase] = useState<"loading" | "setup" | "main">("loading")
-  const [url, setUrl] = useState(DEFAULT_URL)
-  const [tempUrl, setTempUrl] = useState(DEFAULT_URL)
+  const [url, setUrl] = useState("")
+  const [tempUrl, setTempUrl] = useState("")
   const [tempToken, setTempToken] = useState("")
-  const [showAdvanced, setShowAdvanced] = useState(false)
-  const [hasDeviceToken, setHasDeviceToken] = useState(false)
   const [error, setError] = useState("")
   const [fromMain, setFromMain] = useState(false)
   const [health, setHealth] = useState<"checking" | "ok" | "fail">("checking")
 
   const load = useCallback(async () => {
-    const data = await readStoredAuth()
+    const data = await chrome.storage.sync.get([STORAGE_URL, STORAGE_SETUP, STORAGE_GATEWAY_TOKEN])
     const storedUrl = typeof data[STORAGE_URL] === "string" ? data[STORAGE_URL] : ""
-    const storedToken = typeof data[STORAGE_GATEWAY_TOKEN] === "string" ? data[STORAGE_GATEWAY_TOKEN] : ""
-    const storedDeviceToken =
-      typeof data[STORAGE_DEVICE_TOKEN] === "string" ? data[STORAGE_DEVICE_TOKEN] : ""
+    const storedToken =
+      typeof data[STORAGE_GATEWAY_TOKEN] === "string" ? data[STORAGE_GATEWAY_TOKEN] : ""
 
-    const effectiveUrl = normalizeUrl(storedUrl || DEFAULT_URL)
-    const effectiveToken = storedToken.trim() || DEFAULT_GATEWAY_TOKEN
-
-    const bootstrapUpdates: Record<string, unknown> = {}
-    if (!storedUrl && isValidHttpUrl(effectiveUrl)) {
-      bootstrapUpdates[STORAGE_URL] = effectiveUrl
-    }
-    if (data[STORAGE_SETUP] === undefined) {
-      bootstrapUpdates[STORAGE_SETUP] = true
-    }
-    if (!storedToken.trim()) {
-      bootstrapUpdates[STORAGE_GATEWAY_TOKEN] = DEFAULT_GATEWAY_TOKEN
-    }
-    if (Object.keys(bootstrapUpdates).length > 0) {
-      await writeStoredAuth(bootstrapUpdates)
+    let setupDone = data[STORAGE_SETUP] === true
+    if (data[STORAGE_SETUP] === undefined && storedUrl.length > 0 && storedToken.length > 0) {
+      setupDone = true
+      await chrome.storage.sync.set({ [STORAGE_SETUP]: true })
     }
 
-    setUrl(effectiveUrl)
-    setTempUrl(effectiveUrl)
-    setTempToken(effectiveToken)
-    setShowAdvanced(storedToken.trim().length > 0 && storedToken.trim() !== DEFAULT_GATEWAY_TOKEN)
-    setHasDeviceToken(storedDeviceToken.length > 0)
-    setPhase(isValidHttpUrl(effectiveUrl) ? "main" : "setup")
+    setUrl(storedUrl)
+    setTempUrl(storedUrl || DEFAULT_URL)
+    setTempToken(storedToken)
+    setPhase(setupDone && storedUrl && storedToken ? "main" : "setup")
   }, [])
 
   useEffect(() => {
@@ -107,10 +86,6 @@ export function App() {
     chrome.tabs.create({ url })
   }
 
-  function openDetachedWindow() {
-    chrome.runtime.sendMessage({ type: "OPEN_POPUP" })
-  }
-
   function recheckHealth() {
     if (!isValidHttpUrl(url)) return
     setHealth("checking")
@@ -118,31 +93,26 @@ export function App() {
   }
 
   async function handleConnect() {
-    const normalizedUrl = normalizeUrl(tempUrl)
+    const normalized = normalizeUrl(tempUrl)
     const token = tempToken.trim()
 
-    if (!normalizedUrl || !isValidHttpUrl(normalizedUrl)) {
-      setError("Enter a valid gateway URL, for example http://localhost:18789")
+    if (!normalized || !isValidHttpUrl(normalized)) {
+      setError("Enter a valid gateway URL, for example http://localhost:18789.")
       return
     }
 
-    const updates: Record<string, unknown> = {
-      [STORAGE_URL]: normalizedUrl,
-      [STORAGE_SETUP]: true
-    }
-    if (normalizeUrl(url) !== normalizedUrl) {
-      updates[STORAGE_SESSION_KEY] = ""
+    if (!token) {
+      setError("Enter the gateway token from OPENCLAW_GATEWAY_TOKEN.")
+      return
     }
 
-    if (token) {
-      updates[STORAGE_GATEWAY_TOKEN] = token
-    } else {
-      updates[STORAGE_GATEWAY_TOKEN] = ""
-    }
-
-    await writeStoredAuth(updates)
     setError("")
-    setUrl(normalizedUrl)
+    await chrome.storage.sync.set({
+      [STORAGE_URL]: normalized,
+      [STORAGE_GATEWAY_TOKEN]: token,
+      [STORAGE_SETUP]: true
+    })
+    setUrl(normalized)
     setFromMain(false)
     setPhase("main")
   }
@@ -150,16 +120,9 @@ export function App() {
   function openSettings() {
     setFromMain(true)
     setTempUrl(url)
-    void readStoredAuth().then((data) => {
-      const storedToken =
-        typeof data[STORAGE_GATEWAY_TOKEN] === "string" ? data[STORAGE_GATEWAY_TOKEN] : ""
-      const deviceToken =
-        typeof data[STORAGE_DEVICE_TOKEN] === "string" ? data[STORAGE_DEVICE_TOKEN] : ""
-      const normalizedToken = storedToken.trim() || DEFAULT_GATEWAY_TOKEN
-
-      setTempToken(normalizedToken)
-      setShowAdvanced(storedToken.trim().length > 0 && storedToken.trim() !== DEFAULT_GATEWAY_TOKEN)
-      setHasDeviceToken(deviceToken.length > 0)
+    void chrome.storage.sync.get(STORAGE_GATEWAY_TOKEN).then((data) => {
+      const token = data[STORAGE_GATEWAY_TOKEN]
+      setTempToken(typeof token === "string" ? token : "")
     })
     setError("")
     setPhase("setup")
@@ -189,7 +152,7 @@ export function App() {
             <div>
               <h1 className="setup-title">OpenClaw</h1>
               <p className="setup-subtitle">
-                Set the gateway URL and connect. The local demo token is filled automatically.
+                The extension connects directly to your OpenClaw gateway over WebSocket.
               </p>
             </div>
           </div>
@@ -212,40 +175,26 @@ export function App() {
             aria-invalid={!!error}
           />
 
-          <button
-            type="button"
-            className="btn-inline btn-inline--compact"
-            onClick={() => setShowAdvanced((current) => !current)}
-          >
-            {showAdvanced ? "Hide advanced" : "Show advanced"}
-          </button>
-
-          {showAdvanced ? (
-            <>
-              <label className="field-label" htmlFor="oc-token" style={{ marginTop: 14 }}>
-                Gateway token (optional)
-              </label>
-              <input
-                id="oc-token"
-                className="field-input"
-                type="password"
-                value={tempToken}
-                onChange={(event) => {
-                  setTempToken(event.target.value)
-                  setError("")
-                }}
-                placeholder="OPENCLAW_GATEWAY_TOKEN"
-                autoComplete="off"
-                spellCheck={false}
-              />
-            </>
-          ) : null}
+          <label className="field-label" htmlFor="oc-token" style={{ marginTop: 14 }}>
+            Gateway token
+          </label>
+          <input
+            id="oc-token"
+            className="field-input"
+            type="password"
+            value={tempToken}
+            onChange={(event) => {
+              setTempToken(event.target.value)
+              setError("")
+            }}
+            placeholder="OPENCLAW_GATEWAY_TOKEN"
+            autoComplete="off"
+            spellCheck={false}
+          />
 
           {error ? <p className="field-error">{error}</p> : null}
           <p className="field-hint">
-            {hasDeviceToken
-              ? "This device was already paired with the gateway. You only need a token if auth is re-enabled later."
-              : "The local demo token is already prefilled. You only need to edit it if you changed OPENCLAW_GATEWAY_TOKEN."}
+            Use the same value that you put into <code className="inline-code">OPENCLAW_GATEWAY_TOKEN</code>.
           </p>
 
           <div className="setup-actions">
@@ -268,29 +217,12 @@ export function App() {
       <header className="main-bar">
         <span className="main-bar-title">OpenClaw</span>
         <div className="main-bar-actions">
-          {!isDetachedWindow ? (
-            <button
-              type="button"
-              className="icon-btn"
-              onClick={openDetachedWindow}
-              title="Open in separate window"
-              aria-label="Open in separate window"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                <path d="M4 8a2 2 0 0 1 2-2h8" />
-                <path d="M10 4h10v10" />
-                <path d="M14 4 20 4 20 10" />
-                <path d="M20 4 10 14" />
-                <rect x="4" y="8" width="12" height="12" rx="2" />
-              </svg>
-            </button>
-          ) : null}
           <button
             type="button"
             className="icon-btn"
             onClick={openControlUiTab}
-            title="Open the full Control UI in a tab"
-            aria-label="Open the full Control UI"
+            title="Open full Control UI"
+            aria-label="Open full Control UI"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3" />
@@ -300,8 +232,8 @@ export function App() {
             type="button"
             className="icon-btn"
             onClick={openSettings}
-            title="Edit gateway settings"
-            aria-label="Settings"
+            title="Open settings"
+            aria-label="Open settings"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
               <circle cx="12" cy="12" r="3" />
@@ -319,13 +251,13 @@ export function App() {
               {health === "checking" ? (
                 <span>Checking HTTP...</span>
               ) : health === "ok" ? (
-                <span>Gateway reachable</span>
+                <span>Gateway online</span>
               ) : (
-                <span>Gateway is not reachable</span>
+                <span>HTTP unavailable</span>
               )}
             </div>
             <button type="button" className="btn-inline btn-inline--dim" onClick={recheckHealth}>
-              Recheck
+              Retry
             </button>
           </div>
           <ChatWorkspace gatewayHttpBase={url} />
@@ -333,9 +265,9 @@ export function App() {
       ) : (
         <main className="main-hub">
           <div className="frame-fallback">
-            <p>The saved gateway URL is invalid.</p>
+            <p>The saved gateway URL is not reachable.</p>
             <button type="button" className="btn btn--primary" onClick={openSettings}>
-              Set URL
+              Open settings
             </button>
           </div>
         </main>
