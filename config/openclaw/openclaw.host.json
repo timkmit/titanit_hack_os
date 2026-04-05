@@ -40,7 +40,7 @@
     }
   },
   "tools": {
-    "profile": "minimal",
+    "profile": "full",
     "allow": [
       "group:ui",
       "group:web"
